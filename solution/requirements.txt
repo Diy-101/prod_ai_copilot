@@ -1,0 +1,15 @@
+fastapi
+redis
+uvicorn
+pydantic
+sqlalchemy
+asyncpg
+python-jose
+passlib
+bcrypt
+python-multipart
+lark
+fastapi-cache2
+pytest
+pytest-asyncio
+httpx
