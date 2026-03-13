@@ -6,8 +6,8 @@ redis
 fastapi-cache2
 pydantic
 python-jose[cryptography]
-passlib[bcrypt]
-bcrypt
+passlib[bcrypt]==1.7.4
+bcrypt==4.0.1
 python-multipart
 lark
 pytest

@@ -1,11 +1,15 @@
 from datetime import datetime, timezone
 from typing import Any
 import uuid
+import logging
 
 from fastapi import Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException
+
+
+logger = logging.getLogger(__name__)
 
 
 def now_iso() -> str:
@@ -100,4 +104,20 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
     return JSONResponse(
         status_code=exc.status_code,
         content=content,
+    )
+
+
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    trace_id = getattr(request.state, "traceId", str(uuid.uuid4()))
+    logger.exception("Unhandled exception on %s", request.url.path, exc_info=exc)
+
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={
+            "code": "INTERNAL_ERROR",
+            "message": "Внутренняя ошибка сервера",
+            "traceId": trace_id,
+            "timestamp": now_iso(),
+            "path": request.url.path,
+        },
     )

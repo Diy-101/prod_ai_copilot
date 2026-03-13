@@ -1,9 +1,11 @@
 import sys
 import asyncio
 import os
+import uuid
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
+from fastapi.exceptions import RequestValidationError
 
 from fastapi_cache import FastAPICache
 from fastapi_cache.backends.redis import RedisBackend
@@ -15,7 +17,11 @@ from app.api.auth.register import router as auth_router
 from app.api.auth.login import router as login_router
 from app.api.ping.router import router as ping_router
 
-from app.utils.error_handlers import validation_exception_handler, http_exception_handler
+from app.utils.error_handlers import (
+    validation_exception_handler,
+    http_exception_handler,
+    unhandled_exception_handler,
+)
 from app.core.database.init import init_db
 
 
@@ -63,6 +69,7 @@ async def add_trace_id(request, call_next):
 
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
 app.add_exception_handler(HTTPException, http_exception_handler)
+app.add_exception_handler(Exception, unhandled_exception_handler)
 
 app.include_router(health_router, prefix="/api")
 

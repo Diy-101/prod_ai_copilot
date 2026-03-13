@@ -1,24 +1,17 @@
 import asyncio
 import os
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import sessionmaker
 
-from app.core.database.session import engine
-from app.core.database.models.base import Base, User, UserRole
+from app.core.database.models import Base, User, UserRole
+from app.core.database.session import SessionLocal, engine
 from app.utils.hashing import hash_password
+
 
 async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    
-    async_session = sessionmaker(
-        engine, 
-        class_=AsyncSession, 
-        expire_on_commit=False
-    )
-    
-    async with async_session() as session:
+
+    async with SessionLocal() as session:
         admin_email = os.getenv("ADMIN_EMAIL")
         admin_password = os.getenv("ADMIN_PASSWORD")
         admin_fullname = os.getenv("ADMIN_FULLNAME", "System Admin")
