@@ -7,26 +7,27 @@ stages:
 variables:
   PYTHON_IMAGE: "python:3.12-slim"
   DOCKER_IMAGE: "$CI_REGISTRY_IMAGE"
-
+  APP_DIR: "ML"
 
 .python-base:
   image: $PYTHON_IMAGE
   before_script:
-    - pip install -r solution/requirements.txt
-    - export PYTHONPATH=$PYTHONPATH:$(pwd)/solution
+    - python -m pip install --upgrade pip
+    - pip install -e "$APP_DIR[dev]"
+    - export PYTHONPATH="$PYTHONPATH:$(pwd)/$APP_DIR"
 
 lint:
   stage: lint
   extends: .python-base
   script:
     - pip install ruff
-    - ruff check solution
+    - ruff check "$APP_DIR/src" "$APP_DIR/tests"
 
 test:
   stage: test
   extends: .python-base
   script:
-    - pytest solution/tests
+    - pytest "$APP_DIR/tests"
 
 build:
   stage: build
@@ -42,40 +43,36 @@ build:
   before_script:
     - until docker info; do sleep 1; done
   script:
-    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
-    - docker build --pull -t $DOCKER_IMAGE:latest -t $DOCKER_IMAGE:$CI_COMMIT_SHORT_SHA ./solution
-    - docker push $DOCKER_IMAGE:latest
-    - docker push $DOCKER_IMAGE:$CI_COMMIT_SHORT_SHA
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
+    - docker build --pull -t "$DOCKER_IMAGE:latest" -t "$DOCKER_IMAGE:$CI_COMMIT_SHORT_SHA" "./$APP_DIR"
+    - docker push "$DOCKER_IMAGE:latest"
+    - docker push "$DOCKER_IMAGE:$CI_COMMIT_SHORT_SHA"
   only:
     - main
     - master
-
-
 
 deploy:
   stage: deploy
   image: alpine:latest
   before_script:
     - apk add --no-cache openssh-client
-    - eval $(ssh-agent -s)
+    - eval "$(ssh-agent -s)"
     - '[[ -z "$SSH_PRIVATE_KEY" ]] && echo "SSH_PRIVATE_KEY is empty" && exit 1'
     - 'echo "$SSH_PRIVATE_KEY" | tr -d "\r" | ssh-add - > /dev/null'
     - mkdir -p ~/.ssh
     - chmod 700 ~/.ssh
     - 'echo "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts'
     - chmod 644 ~/.ssh/known_hosts
-
   script:
     - |
-      ssh $SERVER_USER@$SERVER_IP "
-        cd /path/to/project &&
+      ssh "$SERVER_USER@$SERVER_IP" "
+        cd /path/to/project/$APP_DIR &&
         echo 'DOCKER_IMAGE=$DOCKER_IMAGE' > .env &&
         echo 'TAG=$CI_COMMIT_SHORT_SHA' >> .env &&
         docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY &&
         docker compose pull &&
         docker compose up -d
       "
-
   only:
     - main
     - master
