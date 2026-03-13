@@ -1,0 +1,88 @@
+Metadata-Version: 2.4
+Name: ml-planner-service
+Version: 0.1.0
+Summary: Minimal FastAPI backend for ML Planner prototype
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+Requires-Dist: fastapi>=0.111.0
+Requires-Dist: uvicorn>=0.30.0
+Requires-Dist: pydantic>=2.7.0
+Requires-Dist: pytest>=8.0.0
+Requires-Dist: httpx>=0.27.0
+
+# ML Planner Service (Prototype)
+
+Minimal FastAPI backend service for an ML planner prototype with stub business logic.
+
+## Requirements
+
+- Python 3.11+
+
+## Install
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -e .[dev]
+```
+
+## Run locally
+
+```bash
+uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+## Healthcheck
+
+```bash
+curl -X GET http://127.0.0.1:8000/ping
+```
+
+Expected response:
+
+```json
+{
+  "status": "ok",
+  "service": "ml-planner",
+  "version": "0.1.0"
+}
+```
+
+## Ingest OpenAPI stub
+
+```bash
+curl -X POST http://127.0.0.1:8000/ingest/openapi \
+  -H "Content-Type: application/json" \
+  -d '{
+    "source_name": "sample-api",
+    "openapi_spec": {
+      "paths": {
+        "/customers": {},
+        "/campaigns": {}
+      },
+      "components": {
+        "schemas": {
+          "Customer": {},
+          "Campaign": {}
+        }
+      }
+    }
+  }'
+```
+
+## Plan stub
+
+```bash
+curl -X POST http://127.0.0.1:8000/plan \
+  -H "Content-Type: application/json" \
+  -d '{
+    "task": "Create an audience and draft campaign",
+    "top_k": 2
+  }'
+```
+
+## Run tests
+
+```bash
+pytest -q
+```
