@@ -15,7 +15,13 @@ from app.api.ping.router import router as health_router
 
 from app.api.auth.register import router as auth_router
 from app.api.auth.login import router as login_router
-from app.api.ping.router import router as ping_router
+
+from app.api.users.get_me import router as get_me_router
+from app.api.users.list_users import router as list_users_router
+from app.api.users.update_me import router as update_me_router
+from app.api.users.update_user import router as update_user_router
+from app.api.users.update_password import router as update_password_router
+from app.api.users.delete_user import router as delete_user_router
 
 from app.utils.error_handlers import (
     validation_exception_handler,
@@ -75,4 +81,10 @@ app.include_router(health_router, prefix="/api")
 
 app.include_router(auth_router, prefix="/api")
 app.include_router(login_router, prefix="/api")
-app.include_router(ping_router)
+
+app.include_router(get_me_router, prefix="/api/users")
+app.include_router(list_users_router, prefix="/api/users")
+app.include_router(update_me_router, prefix="/api/users")
+app.include_router(update_user_router, prefix="/api/users")
+app.include_router(update_password_router, prefix="/api/users")
+app.include_router(delete_user_router, prefix="/api/users")
