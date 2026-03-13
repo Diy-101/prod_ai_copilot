@@ -1,15 +1,3 @@
-Metadata-Version: 2.4
-Name: ml-planner-service
-Version: 0.1.0
-Summary: Minimal FastAPI backend for ML Planner prototype
-Requires-Python: >=3.11
-Description-Content-Type: text/markdown
-Requires-Dist: fastapi>=0.111.0
-Requires-Dist: uvicorn>=0.30.0
-Requires-Dist: pydantic>=2.7.0
-Requires-Dist: pytest>=8.0.0
-Requires-Dist: httpx>=0.27.0
-
 # ML Planner Service (Prototype)
 
 Minimal FastAPI backend service for an ML planner prototype with stub business logic.
@@ -86,3 +74,20 @@ curl -X POST http://127.0.0.1:8000/plan \
 ```bash
 pytest -q
 ```
+
+## CI/CD (GitLab)
+
+Pipeline stages:
+- `lint`
+- `test`
+- `build` (Docker image build and push)
+- `deploy` (SSH to server + `docker compose up -d`)
+
+Required GitLab CI/CD variables:
+- `CI_REGISTRY_USER`
+- `CI_REGISTRY_PASSWORD`
+- `SSH_PRIVATE_KEY`
+- `SSH_KNOWN_HOSTS`
+- `SERVER_USER`
+- `SERVER_IP`
+- `DEPLOY_PATH` (absolute path on server where `docker-compose.yml` lives)
