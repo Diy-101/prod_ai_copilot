@@ -1,1 +1,6 @@
-u
+fastapi
+uvicorn[standard]
+sqlalchemy>=2.0
+asyncpg
+redis
+fastapi-cache2
