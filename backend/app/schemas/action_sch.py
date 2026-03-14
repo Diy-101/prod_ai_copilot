@@ -27,6 +27,19 @@ class ActionListItemResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class ActionIngestItemResponse(BaseModel):
+    id: UUID
+    operation_id: str | None = None
+    method: HttpMethod
+    path: str
+    summary: str | None = None
+    source_filename: str | None = None
+    ingest_status: ActionIngestStatus
+    ingest_error: str | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class ActionDetailResponse(ActionListItemResponse):
     parameters_schema: dict[str, Any] | None = None
     request_body_schema: dict[str, Any] | None = None
