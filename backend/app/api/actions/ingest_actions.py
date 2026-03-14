@@ -20,7 +20,7 @@ async def ingest_actions(
     session: AsyncSession = Depends(get_session),
 ):
     try:
-       s document = load_openapi_document(payload)
+        document = load_openapi_document(payload)
         ingestion_result = extract_actions_with_failures_from_document(document, source_filename=file.filename)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
