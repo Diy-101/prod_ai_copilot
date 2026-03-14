@@ -35,7 +35,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
 
   return (
     <>
-      <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-6 sticky top-0 z-50">
+      <header className="h-16 bg-background border-b border-border flex items-center justify-between px-6 sticky top-0 z-50">
         <div className="flex items-center gap-4">
           <Button
             variant="ghost"
@@ -47,10 +47,10 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
           </Button>
           
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-green-600 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-sm">K</span>
+            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
+              <span className="text-primary-foreground font-bold text-sm">AI</span>
             </div>
-            <h1 className="text-xl font-semibold text-gray-900">KrokOS Graph</h1>
+            <h1 className="text-xl font-semibold text-foreground">AI Copilot</h1>
           </div>
         </div>
 
@@ -68,7 +68,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="flex items-center gap-2">
                 <Avatar className="h-8 w-8">
-                  <AvatarFallback className="bg-green-600 text-white">
+                  <AvatarFallback className="bg-primary text-primary-foreground">
                     {user?.name?.charAt(0).toUpperCase() || 'U'}
                   </AvatarFallback>
                 </Avatar>
@@ -80,7 +80,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
             <DropdownMenuContent align="end" className="w-56">
               <div className="px-2 py-1.5">
                 <p className="text-sm font-medium">{user?.name}</p>
-                <p className="text-xs text-gray-500">{user?.email}</p>
+                <p className="text-xs text-muted-foreground">{user?.email}</p>
                 <Badge variant="secondary" className="mt-1 text-xs">
                   {user?.role}
                 </Badge>
@@ -116,15 +116,15 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
           
           {/* Само модальное окно */}
           <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-            <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
-              <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+            <div className="inline-block align-bottom bg-background border border-border rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+              <div className="bg-background px-4 pt-5 pb-4 sm:p-6 sm:pb-4 text-foreground">
                 <div className="flex justify-between items-start">
-                  <h3 className="text-lg leading-6 font-medium text-gray-900">
+                  <h3 className="text-lg leading-6 font-medium text-foreground">
                     Профиль пользователя
                   </h3>
                   <button
                     type="button"
-                    className="text-gray-400 hover:text-gray-500 focus:outline-none"
+                    className="text-muted-foreground hover:text-foreground focus:outline-none"
                     onClick={closeProfile}
                   >
                     <X className="h-6 w-6" />
@@ -134,7 +134,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
                 <div className="mt-4">
                   <div className="flex items-center gap-4">
                     <Avatar className="h-16 w-16">
-                      <AvatarFallback className="bg-green-600 text-white text-2xl">
+                      <AvatarFallback className="bg-primary text-primary-foreground text-2xl">
                         {user?.name?.charAt(0).toUpperCase() || 'U'}
                       </AvatarFallback>
                     </Avatar>
@@ -148,20 +148,20 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
                   
                   <div className="mt-6 space-y-4">
                     <div>
-                      <p className="text-sm text-gray-500">Email</p>
+                      <p className="text-sm text-muted-foreground">Email</p>
                       <p className="text-sm font-medium">{user?.email}</p>
                     </div>
                     
                     <div>
-                      <p className="text-sm text-gray-500">Дата регистрации</p>
+                      <p className="text-sm text-muted-foreground">Дата регистрации</p>
                       <p className="text-sm font-medium">
-                        {new Date(user?.createdAt || Date.now()).toLocaleDateString()}
+                        {new Date((user as any)?.createdAt || Date.now()).toLocaleDateString()}
                       </p>
                     </div>
                     
                     <div>
-                      <p className="text-sm text-gray-500">Статус</p>
-                      <p className="text-sm font-medium text-green-600">
+                      <p className="text-sm text-muted-foreground">Статус</p>
+                      <p className="text-sm font-medium text-primary">
                         Активен
                       </p>
                     </div>
@@ -169,7 +169,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
                 </div>
               </div>
               
-              <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+              <div className="bg-muted px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse border-t border-border">
                 <Button
                   type="button"
                   variant="default"
