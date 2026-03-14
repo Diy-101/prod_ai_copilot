@@ -95,7 +95,7 @@ export const SwaggerImportModal: React.FC<SwaggerImportModalProps> = ({
 
     setIsImporting(true);
     try {
-      const response = await fetch('/api/import-swagger', {
+      const response = await fetch('/api/v1/actions/ingest', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

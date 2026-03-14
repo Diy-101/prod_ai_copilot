@@ -48,7 +48,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
           
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-              <span className="text-primary-foreground font-bold text-sm">AI</span>
+              <span className="text-primary-foreground font-bold text-sm">Ai</span>
             </div>
             <h1 className="text-xl font-semibold text-foreground">AI Copilot</h1>
           </div>
