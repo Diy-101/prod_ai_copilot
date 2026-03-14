@@ -102,6 +102,8 @@ deploy-backend:
       ssh -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_IP "
         cd ~/backend &&
         git pull &&
+        # Останавливаем старую версию, если она есть
+        [ -d "solution" ] && sudo docker compose -f solution/docker-compose.yml down || true
         cd backend &&
         echo 'DOCKER_IMAGE=$BACKEND_IMAGE' > .env &&
         echo 'TAG=$CI_COMMIT_SHORT_SHA' >> .env &&
