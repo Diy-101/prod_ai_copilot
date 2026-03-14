@@ -13,7 +13,7 @@ export const Pipelines: React.FC = () => {
   return (
     <div className="h-full flex overflow-hidden">
       {/* Main Pipeline Zone - Center */}
-      <div className="flex-1 relative bg-muted/10 p-8 overflow-auto">
+      <div className="flex-1 relative bg-muted/5 bg-grid-pattern p-8 overflow-auto">
         <div className="max-w-4xl mx-auto space-y-12 py-10">
           <div className="flex flex-col items-center mb-12">
             <h1 className="text-2xl font-bold text-foreground mb-2">Editor Pipeline</h1>
