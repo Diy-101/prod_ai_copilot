@@ -6,7 +6,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
-from app.schemas.action_sch import ActionDetailResponse
+from app.schemas.action_sch import ActionIngestItemResponse
 
 
 class CapabilityDataFormat(BaseModel):
@@ -31,10 +31,19 @@ class CapabilityResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class CapabilityIngestItemResponse(BaseModel):
+    id: UUID
+    action_id: UUID
+    name: str
+    description: str | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class ActionIngestWithCapabilitiesResponse(BaseModel):
     succeeded_count: int
     failed_count: int
     created_capabilities_count: int
-    succeeded_actions: list[ActionDetailResponse]
-    failed_actions: list[ActionDetailResponse]
-    capabilities: list[CapabilityResponse]
+    succeeded_actions: list[ActionIngestItemResponse]
+    failed_actions: list[ActionIngestItemResponse]
+    capabilities: list[CapabilityIngestItemResponse]
