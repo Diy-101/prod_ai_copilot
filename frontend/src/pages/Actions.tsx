@@ -26,6 +26,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { SwaggerImportModal } from '@/components/shared/SwaggerImportModal';
+import { ImportResultsModal } from '@/components/shared/ImportResultsModal';
 import { toast } from 'sonner';
 
 // Mock data for Actions
@@ -43,6 +44,8 @@ const Actions: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [actions, setActions] = useState([]);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [isResultsModalOpen, setIsResultsModalOpen] = useState(false);
+  const [importResults, setImportResults] = useState<{ success_actions: any[], failed_actions: any[] } | null>(null);
 
   const filteredActions = actions.filter((action: any) =>
     action.path?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -188,11 +191,26 @@ const Actions: React.FC = () => {
         isOpen={isImportModalOpen}
         onClose={() => setIsImportModalOpen(false)}
         onImport={(data) => {
-          if (data && data.actions) {
-            setActions(data.actions);
-            toast.success(`Загружено ${data.created_count || data.actions.length} методов`);
+          if (data && (data.success_actions || data.actions)) {
+            const successList = data.success_actions || data.actions || [];
+            const failedList = data.failed_actions || [];
+            
+            // Update main table with successful actions
+            setActions(prev => [...successList, ...prev]);
+            
+            // Prepare and open results modal
+            setImportResults({
+              success_actions: successList,
+              failed_actions: failedList
+            });
+            setIsResultsModalOpen(true);
           }
         }}
+      />
+      <ImportResultsModal
+        isOpen={isResultsModalOpen}
+        onClose={() => setIsResultsModalOpen(false)}
+        results={importResults}
       />
     </div>
   );
