@@ -150,10 +150,6 @@ const Home: React.FC = () => {
         isOpen={isResultsModalOpen}
         onClose={() => {
           setIsResultsModalOpen(false);
-          // Redirect to actions page after closing results if there were successes
-          if (importResults && importResults.succeeded_actions.length > 0) {
-            navigate('/actions');
-          }
         }}
         results={importResults}
       />
