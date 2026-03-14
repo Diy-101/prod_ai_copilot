@@ -71,16 +71,11 @@ const Actions: React.FC = () => {
         </div>
         <div className="flex items-center gap-3">
           <Button
-            variant="outline"
-            className="gap-2 border-border hover:bg-accent"
+            className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
             onClick={() => setIsImportModalOpen(true)}
           >
             <FileJson className="h-4 w-4" />
             Import Swagger
-          </Button>
-          <Button className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90">
-            <Plus className="h-4 w-4" />
-            New Action
           </Button>
         </div>
       </div>
@@ -103,7 +98,7 @@ const Actions: React.FC = () => {
         <div className="overflow-auto flex-1">
           <Table>
             <TableHeader className="bg-muted/50 sticky top-0 z-10">
-              <TableRow>
+              <TableRow className="hover:bg-transparent border-none">
                 <TableHead className="w-[100px] text-foreground">Method</TableHead>
                 <TableHead className="text-foreground">Endpoint Path</TableHead>
                 <TableHead className="text-foreground">Category</TableHead>
@@ -114,9 +109,9 @@ const Actions: React.FC = () => {
             <TableBody>
               {filteredActions.length > 0 ? (
                 filteredActions.map((action) => (
-                  <TableRow key={action.id} className="hover:bg-accent/50 group border-border">
+                  <TableRow key={action.id} className="group border-border">
                     <TableCell>
-                      <Badge className={`${getMethodColor(action.method)} variant-outline font-bold`}>
+                      <Badge variant="outline" className={`${getMethodColor(action.method)} font-bold`}>
                         {action.method}
                       </Badge>
                     </TableCell>
