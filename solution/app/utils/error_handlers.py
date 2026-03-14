@@ -86,7 +86,8 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
         code = "FORBIDDEN"
     elif exc.status_code == status.HTTP_404_NOT_FOUND:
         code = "NOT_FOUND"
-        if message == "Not Found": message = "Ресурс не найден"
+        if message == "Not Found":
+            message = "Ресурс не найден"
     elif exc.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY:
         code = "VALIDATION_FAILED"
 
