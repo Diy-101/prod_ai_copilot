@@ -1,14 +1,14 @@
 /**
- * @fileoverview Main entry point for Krok MVP application
+ * @fileoverview Main entry point for AI Copilot MVP application
  * 
  * This file serves as the application entry point, initializing the React
  * application and mounting it to the DOM. It imports the main App component
  * and global styles.
  * 
  * The application is rendered into the DOM element with id "root" and
- * provides the foundation for the entire Krok MVP application.
+ * provides the foundation for the entire AI Copilot MVP application.
  * 
- * @author Krok Development Team
+ * @author AI Copilot Development Team
  * @version 1.0.0
  */
 

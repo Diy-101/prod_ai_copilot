@@ -1,13 +1,4 @@
 /**
- * @fileoverview Main application component for Krok MVP
- * 
- * This file contains the root application component that sets up the application
- * with all necessary providers and routing configuration. It serves as the entry
- * point for the React application and configures:
- * - React Query for data fetching and caching
- * - Authentication context
- * - Routing with React Router
- * - Toast notifications
  * - Tooltip provider
  * 
  * @author Krok Development Team
@@ -54,8 +45,8 @@ const AppRoutes = () => {
         {/* Capabilities - Business logic skills */}
         <Route path="capabilities" element={<Capabilities />} />
         
-        {/* Pipelines - AI-generated workflows (formerly Graph Editor) */}
-        <Route path="pipelines" element={<Pipelines />} />
+        {/* Pipelines - Disabled for now */}
+        {/* <Route path="pipelines" element={<Pipelines />} /> */}
       </Route>
       
       {/* 404 page for unmatched routes */}

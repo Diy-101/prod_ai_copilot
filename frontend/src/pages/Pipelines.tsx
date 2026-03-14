@@ -1,22 +1,22 @@
 /**
- * @fileoverview Graph Editor page component for Krok MVP
+ * @fileoverview Pipelines page component for AI Copilot
  * 
- * This component provides an interactive graph visualization and editing interface
- * for infrastructure topology. Users can create, edit, and manage nodes and
- * connections between different system components.
+ * This component provides an interactive pipeline visualization and editing interface
+ * for business workflows. Users can create, edit, and manage steps and
+ * connections between different capabilities.
  * 
  * Features:
- * - Interactive node creation and editing
- * - Drag-and-drop node placement
- * - Connection management between nodes
+ * - Interactive step creation and editing
+ * - Drag-and-drop capability placement
+ * - Connection management between steps
  * - Multiple flow support with tabs
  * - Zoom and pan controls
- * - Node properties panel
+ * - Step properties panel
  * - Import/export functionality
- * - Real-time health monitoring
+ * - AI-powered synthesis chat
  * 
- * @author Krok Development Team
- * @version 1.0.0
+ * @author AI Copilot Team
+ * @version 1.1.0
  */
 
 import React, { useState, useCallback } from "react";
@@ -54,16 +54,12 @@ import { GraphEditorHeader } from "@/components/graph/GraphEditorHeader";
 import { FlowTabs } from "@/components/graph/FlowTabs";
 import { CanvasInfoOverlay } from "@/components/graph/CanvasInfoOverlay";
 import { useGraphEditorState } from "@/lib/useGraphEditorState";
+import { SynthesisChat } from "@/components/graph/SynthesisChat";
 
-// Новый тип для Flow
-interface Flow {
-  id: string;
-  name: string;
-  nodes: GraphNodeType[];
-  links: GraphLink[];
-}
-
-export const GraphEditor: React.FC = () => {
+/**
+ * Pipelines page component for AI Copilot
+ */
+export const Pipelines: React.FC = () => {
   const {
     flows,
     setFlows,
@@ -141,19 +137,28 @@ export const GraphEditor: React.FC = () => {
         onRenameFlow={handleRenameFlow}
       />
 
-      <div className="flex-1 flex">
-        {/* Tool Palette */}
-        <div className="w-64 p-4 bg-gray-50 border-r border-gray-200">
+      <div className="flex-1 flex overflow-hidden">
+        {/* Synthesis Chat Sidebar - Left side */}
+        <SynthesisChat 
+          className="w-80" 
+          onSynthesize={(prompt) => {
+            toast.success("AI синтезировал сценарий на основе вашего запроса");
+            // Here would be logic to actually add nodes to canvas
+          }} 
+        />
+
+        {/* Tool Palette - Center-Left */}
+        <div className="w-64 p-4 bg-muted/30 border-r border-border">
           <NodePalette onAddNode={handleAddNode} />
         </div>
 
         {/* Main Canvas + Properties Panel */}
-        <div className="flex-1 relative bg-white overflow-hidden flex">
+        <div className="flex-1 relative bg-background overflow-hidden flex">
           {/* Canvas + overlay */}
           <div className="flex-1 relative">
             <div
               id="graph-canvas"
-              className="absolute inset-0 bg-[#f7f7fa] bg-grid-pattern"
+              className="absolute inset-0 bg-background bg-grid-pattern"
               style={{
                 transform: `scale(${zoom})`,
                 transformOrigin: "top left",
@@ -414,7 +419,7 @@ export const GraphEditor: React.FC = () => {
             <CanvasInfoOverlay />
           </div>
           {/* Properties Panel (всегда видна) */}
-          <div className="w-80 p-4 bg-gray-50 border-l border-gray-200 h-full relative z-[100]">
+          <div className="w-80 p-4 bg-muted/30 border-l border-border h-full relative z-[100]">
             {/* Информация о потоке: редактирование имени */}
             <div className="mb-4">
               <div className="text-xs text-gray-500 mb-1">Имя потока</div>
@@ -462,4 +467,4 @@ export const GraphEditor: React.FC = () => {
   );
 };
 
-export default GraphEditor;
+export default Pipelines;

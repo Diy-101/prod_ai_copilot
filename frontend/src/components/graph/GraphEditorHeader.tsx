@@ -20,29 +20,29 @@ export const GraphEditorHeader: React.FC<GraphEditorHeaderProps> = ({
   onExport,
   onSave,
 }) => (
-  <div className="p-6 border-b border-gray-200 bg-white">
+  <div className="p-6 border-b border-border bg-card">
     <div className="flex items-center justify-between">
       <div className="flex items-center gap-4">
-        <h1 className="text-2xl font-bold text-gray-900">Редактор графа</h1>
-        <Badge variant={hasChanges ? "destructive" : "secondary"}>
-          {hasChanges ? "Не сохранено" : "Сохранено"}
+        <h1 className="text-2xl font-bold text-foreground">Pipelines Editor</h1>
+        <Badge variant={hasChanges ? "destructive" : "secondary"} className="bg-primary/20 text-primary border-primary/20 hover:bg-primary/30">
+          {hasChanges ? "Изменено" : "Сохранено"}
         </Badge>
-        <span className="text-sm text-gray-500">
-          Узлов: {nodesCount} | Масштаб: {Math.round(zoom * 100)}%
+        <span className="text-sm text-muted-foreground font-mono">
+          Steps: {nodesCount} | Zoom: {Math.round(zoom * 100)}%
         </span>
       </div>
       <div className="flex items-center gap-2">
-        <Button variant="outline" size="sm" onClick={onImport}>
+        <Button variant="outline" size="sm" onClick={onImport} className="border-border hover:bg-accent">
           <Upload className="h-4 w-4 mr-2" />
-          Импорт
+          Import Flow
         </Button>
-        <Button variant="outline" size="sm" onClick={onExport}>
+        <Button variant="outline" size="sm" onClick={onExport} className="border-border hover:bg-accent">
           <Download className="h-4 w-4 mr-2" />
-          Экспорт
+          Export
         </Button>
-        <Button size="sm" onClick={onSave}>
+        <Button size="sm" onClick={onSave} className="bg-primary text-primary-foreground hover:bg-primary/90 shadow-lg shadow-primary/20">
           <Save className="h-4 w-4 mr-2" />
-          Сохранить
+          Save Pipeline
         </Button>
       </div>
     </div>

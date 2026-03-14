@@ -50,7 +50,7 @@ export const Layout: React.FC = () => {
   const closeSidebar = () => setSidebarOpen(false);
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50">
+    <div className="h-screen flex flex-col bg-background">
       {/* Application header with navigation controls */}
       <Header onToggleSidebar={toggleSidebar} />
       

@@ -1,5 +1,5 @@
 /**
- * @fileoverview Authentication context for Krok MVP
+ * @fileoverview Authentication context for AI Copilot
  * 
  * This context provides authentication state management throughout the application.
  * It handles user authentication, session management, and user data updates.
@@ -12,7 +12,7 @@
  * - User profile updates
  * - Automatic authentication for development
  * 
- * @author Krok Development Team
+ * @author AI Copilot Development Team
  * @version 1.0.0
  */
 
@@ -39,7 +39,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
  */
 const mockUser: User = {
   id: '1',
-  email: 'admin@krokos.com',
+  email: 'admin@aicopilot.com',
   name: 'Администратор',
   role: 'Admin'
 };

@@ -24,11 +24,6 @@ const navigationItems = [
     name: 'Capabilities',
     href: '/capabilities',
     icon: Zap
-  },
-  {
-    name: 'Pipelines',
-    href: '/pipelines',
-    icon: Workflow
   }
 ];
 
@@ -46,15 +41,15 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
       {/* Sidebar */}
       <aside
         className={cn(
-          "fixed top-0 left-0 z-30 h-full bg-gray-50 border-r border-gray-200 transition-transform duration-300 ease-in-out",
+          "fixed top-0 left-0 z-30 h-full bg-background border-r border-border transition-transform duration-300 ease-in-out",
           "lg:static lg:translate-x-0",
           isOpen ? "translate-x-0 w-64" : "-translate-x-full lg:w-16"
         )}
       >
         <div className="flex flex-col h-full">
           {/* Header */}
-          <div className="flex items-center justify-between p-4 border-b border-gray-200">
-            {isOpen && <span className="font-medium text-gray-900">Навигация</span>}
+          <div className="flex items-center justify-between p-4 border-b border-border">
+            {isOpen && <span className="font-medium text-foreground">Навигация</span>}
             <Button
               variant="ghost"
               size="sm"
@@ -76,10 +71,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                     className={({ isActive }) =>
                       cn(
                         "flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors",
-                        "hover:bg-gray-100",
+                        "hover:bg-accent hover:text-accent-foreground",
                         isActive
-                          ? "bg-green-100 text-green-800 font-medium"
-                          : "text-gray-700"
+                          ? "bg-primary/20 text-primary font-medium"
+                          : "text-muted-foreground"
                       )
                     }
                     onClick={() => window.innerWidth < 1024 && onClose()}

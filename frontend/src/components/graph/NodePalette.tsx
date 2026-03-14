@@ -19,6 +19,7 @@ import {
   Network,
   Cloud,
   Info,
+  FileJson
 } from "lucide-react";
 import type { NodeType } from "@/types/graph";
 import { getNodePropertiesSchema } from "@/lib/nodeRedUtils";
@@ -54,48 +55,40 @@ const nodeDescriptions: Record<NodeType, string> = {
 
 const nodeGroups = [
   {
-    group: "Логика",
-    color: "bg-yellow-50 hover:bg-yellow-100",
+    group: "Capabilities (Skills)",
+    color: "bg-primary/10 hover:bg-primary/20",
     nodes: [
-      { type: "inject" as const, icon: Zap, label: "Inject" },
-      { type: "debug" as const, icon: Bug, label: "Debug" },
-      { type: "function" as const, icon: Code2, label: "Function" },
-      { type: "change" as const, icon: Shuffle, label: "Change" },
-      { type: "switch" as const, icon: GitBranch, label: "Switch" },
-      { type: "template" as const, icon: FileText, label: "Template" },
+      { type: "inject" as const, icon: Zap, label: "Trigger" },
+      { type: "service" as const, icon: Settings, label: "Business Skill" },
+      { type: "api" as const, icon: Cloud, label: "API Action" },
+      { type: "function" as const, icon: Code2, label: "AI Logic" },
     ],
   },
   {
-    group: "Интеграция",
-    color: "bg-cyan-50 hover:bg-cyan-100",
+    group: "Communication",
+    color: "bg-blue-500/10 hover:bg-blue-500/20",
     nodes: [
-      { type: "mqtt" as const, icon: Wifi, label: "MQTT" },
-      { type: "http" as const, icon: Globe, label: "HTTP" },
-      { type: "file" as const, icon: File, label: "File" },
-      { type: "serial" as const, icon: HardDrive, label: "Serial" },
-      { type: "json" as const, icon: Database, label: "JSON" },
+      { type: "mqtt" as const, icon: Wifi, label: "Messenger" },
+      { type: "http" as const, icon: Globe, label: "Web Hook" },
+      { type: "template" as const, icon: FileText, label: "Email Template" },
     ],
   },
   {
-    group: "Поток",
-    color: "bg-purple-50 hover:bg-purple-100",
+    group: "Workflow",
+    color: "bg-purple-500/10 hover:bg-purple-500/20",
     nodes: [
-      { type: "split" as const, icon: GitBranch, label: "Split/Join" },
-      { type: "delay" as const, icon: Clock, label: "Delay" },
-      { type: "rbe" as const, icon: Filter, label: "RBE" },
-      { type: "link" as const, icon: Link2, label: "Link" },
+      { type: "switch" as const, icon: GitBranch, label: "Condition" },
+      { type: "delay" as const, icon: Clock, label: "Timer" },
+      { type: "link" as const, icon: Link2, label: "Pipeline Link" },
     ],
   },
   {
-    group: "Система",
-    color: "bg-blue-50 hover:bg-blue-100",
+    group: "Data & Storage",
+    color: "bg-cyan-500/10 hover:bg-cyan-500/20",
     nodes: [
-      { type: "server" as const, icon: Server, label: "Сервер" },
-      { type: "database" as const, icon: Database, label: "БД" },
-      { type: "network" as const, icon: Network, label: "Сеть" },
-      { type: "service" as const, icon: Settings, label: "Сервис" },
-      { type: "api" as const, icon: Cloud, label: "API" },
-      { type: "storage" as const, icon: Database, label: "Хранилище" },
+      { type: "database" as const, icon: Database, label: "Database" },
+      { type: "json" as const, icon: FileJson, label: "JSON Parser" },
+      { type: "storage" as const, icon: HardDrive, label: "File Store" },
     ],
   },
 ];

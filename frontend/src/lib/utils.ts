@@ -1,5 +1,5 @@
 /**
- * @fileoverview Utility functions for Krok MVP application
+ * @fileoverview Utility functions for AI Copilot application
  * 
  * This file contains common utility functions used throughout the application,
  * including CSS class merging, ID generation, and data transformation helpers.
