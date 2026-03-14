@@ -1,1 +1,102 @@
+# =========================
+# Окружение и Секреты (КРИТИЧНО)
+# =========================
+.env
+.env.*
+!.env.example
+*.pem
+credentials.json
+# Исключаем файлы с ключами API (например, для OpenAI или Linear)
+
+# =========================
+# Backend: Python & FastAPI
+# =========================
+# Байт-код
 __pycache__/
+*.py[cod]
+*$py.class
+
+# Виртуальные окружения
+.venv/
+venv/
+env/
+ENV/
+
+# Тесты и покрытие кода
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Логи и кэш FastAPI / Uvicorn
+*.log
+.mypy_cache/
+.ruff_cache/
+
+# =========================
+# Frontend: TypeScript & Node.js
+# =========================
+# Зависимости
+node_modules/
+.pnp
+.pnp.js
+
+# Сборка (Build)
+dist/
+build/
+out/
+.next/
+.nuxt/
+
+# Логи пакетных менеджеров
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# TypeScript
+*.tsbuildinfo
+
+# =========================
+# Базы данных и данные
+# =========================
+# Локальные БД SQLite (если используете для тестов)
+*.sqlite3
+*.db
+
+# Папки для загруженных файлов (например, Swagger/OpenAPI спецификации)
+uploads/
+media/
+
+# =========================
+# AI / ML (Специфично для проекта)
+# =========================
+# Если будете скачивать локальные веса моделей
+*.gguf
+*.bin
+*.pt
+*.safetensors
+models/
+
+# =========================
+# IDE и ОС
+# =========================
+# Windows
+Thumbs.db
+ehthumbs.db
+$RECYCLE.BIN/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Редакторы (VS Code, JetBrains)
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
