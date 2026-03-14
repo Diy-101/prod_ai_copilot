@@ -13,6 +13,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { generatePipeline } from '@/api/chat';
+import { generateUUID } from '@/lib/utils';
 
 const Home: React.FC = () => {
   const { actions, addActions } = useActionsContext();
@@ -28,7 +29,7 @@ const Home: React.FC = () => {
     e.preventDefault();
     if (!chatMessage.trim()) return;
 
-    const dialogId = "11111111-1111-1111-1111-111111111111"
+    const dialogId = generateUUID();
 
     // Send message to generate pipeline endpoint
     await generatePipeline({

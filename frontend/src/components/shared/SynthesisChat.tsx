@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
-import { cn } from '@/lib/utils';
+import { cn, generateUUID } from '@/lib/utils';
 import { generatePipeline } from '@/api/chat';
 
 interface Message {
@@ -40,7 +40,7 @@ export const SynthesisChat: React.FC<SynthesisChatProps> = ({
     }
   ]);
   const [inputValue, setInputValue] = useState('');
-  const [dialogId] = useState<string>(initialDialogId || crypto.randomUUID());
+  const [dialogId] = useState<string>(initialDialogId || generateUUID());
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -56,7 +56,7 @@ export const SynthesisChat: React.FC<SynthesisChatProps> = ({
     }
   }, [initialMessage]);
 
-  const handleSend = (overrideValue?: string) => {
+  const handleSend = async (overrideValue?: string) => {
     const valueToSend = overrideValue || inputValue;
     if (!valueToSend.trim()) return;
 
@@ -64,35 +64,49 @@ export const SynthesisChat: React.FC<SynthesisChatProps> = ({
     setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
     setInputValue('');
 
-    // Send message to generate pipeline endpoint
-    generatePipeline({
-      dialog_id: dialogId,
-      message: userMessage,
-      user_id: null,
-      capability_ids: null
-    });
+    // Pre-add assistant message with loading state
+    setMessages(prev => [...prev, { 
+      role: 'assistant', 
+      content: 'Анализирую возможности...',
+      isGenerating: true 
+    }]);
 
-    // Simulate AI response
-    setTimeout(() => {
-      setMessages(prev => [...prev, { 
-        role: 'assistant', 
-        content: 'Анализирую возможности... Подбираю нужные Capabilities.',
-        isGenerating: true 
-      }]);
+    try {
+      // Send message to generate pipeline endpoint
+      const response = await generatePipeline({
+        dialog_id: dialogId,
+        message: userMessage,
+        user_id: null,
+        capability_ids: null
+      });
 
-      setTimeout(() => {
-        setMessages(prev => {
-          const newMessages = [...prev];
-          const lastIndex = newMessages.length - 1;
-          newMessages[lastIndex] = { 
-            role: 'assistant', 
-            content: 'Я подготовил Pipeline для вашей задачи. Посмотрите на схему по центру. Все готово к запуску!' 
-          };
-          return newMessages;
-        });
-        if (onSynthesize) onSynthesize(userMessage);
-      }, 1500);
-    }, 500);
+      setMessages(prev => {
+        const newMessages = [...prev];
+        const lastIndex = newMessages.length - 1;
+        newMessages[lastIndex] = { 
+          role: 'assistant', 
+          content: response.message_ru || (response.status === 'success' ? 'Я подготовил Pipeline для вашей задачи.' : 'Произошла ошибка при генерации.'),
+          isGenerating: false 
+        };
+        return newMessages;
+      });
+
+      if (response.status === 'success' && onSynthesize) {
+        onSynthesize(userMessage);
+      }
+    } catch (error) {
+      console.error('Error in chat:', error);
+      setMessages(prev => {
+        const newMessages = [...prev];
+        const lastIndex = newMessages.length - 1;
+        newMessages[lastIndex] = { 
+          role: 'assistant', 
+          content: 'К сожалению, произошла ошибка сетевого соединения. Попробуйте еще раз.',
+          isGenerating: false 
+        };
+        return newMessages;
+      });
+    }
   };
 
   return (
