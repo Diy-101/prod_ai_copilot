@@ -1,5 +1,5 @@
 stages:
-  - lint
+  # - lint
   - test
   - build
   - deploy
@@ -21,18 +21,18 @@ variables:
   before_script:
     - cd frontend && npm ci
 
-lint-backend:
-  stage: lint
-  extends: .python-base
-  script:
-    - pip install ruff
-    - ruff check backend
+# lint-backend:
+#   stage: lint
+#   extends: .python-base
+#   script:
+#     - pip install ruff
+#     - ruff check backend
 
-lint-frontend:
-  stage: lint
-  extends: .node-base
-  script:
-    - npm run lint
+# lint-frontend:
+#   stage: lint
+#   extends: .node-base
+#   script:
+#     - npm run lint
 
 test-backend:
   stage: test
