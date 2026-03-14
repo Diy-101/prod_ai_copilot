@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { 
-  Plus, 
-  Search, 
-  FileJson, 
-  MoreHorizontal, 
-  Trash2, 
+import {
+  Plus,
+  Search,
+  FileJson,
+  MoreHorizontal,
+  Trash2,
   ExternalLink,
   ChevronRight
 } from 'lucide-react';
@@ -25,6 +25,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { SwaggerImportModal } from '@/components/shared/SwaggerImportModal';
+import { toast } from 'sonner';
 
 // Mock data for Actions
 const MOCK_ACTIONS = [
@@ -39,8 +41,10 @@ const MOCK_ACTIONS = [
 
 const Actions: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
+  const [actions, setActions] = useState([]);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
-  const filteredActions = MOCK_ACTIONS.filter(action => 
+  const filteredActions = actions.filter(action =>
     action.path.toLowerCase().includes(searchTerm.toLowerCase()) ||
     action.tag.toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -66,7 +70,11 @@ const Actions: React.FC = () => {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <Button variant="outline" className="gap-2 border-border hover:bg-accent">
+          <Button
+            variant="outline"
+            className="gap-2 border-border hover:bg-accent"
+            onClick={() => setIsImportModalOpen(true)}
+          >
             <FileJson className="h-4 w-4" />
             Import Swagger
           </Button>
@@ -81,8 +89,8 @@ const Actions: React.FC = () => {
       <div className="bg-card border border-border rounded-xl p-4 mb-6">
         <div className="relative max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input 
-            placeholder="Поиск по пути или тегу..." 
+          <Input
+            placeholder="Поиск по пути или тегу..."
             className="pl-10 bg-background border-border"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
@@ -146,16 +154,31 @@ const Actions: React.FC = () => {
                   </TableRow>
                 ))
               ) : (
-                <TableRow>
-                  <TableCell colSpan={5} className="h-32 text-center text-muted-foreground">
-                    Ничего не найдено по вашему запросу.
+                <TableRow className="hover:bg-transparent">
+                  <TableCell colSpan={5} className="h-64 text-center">
+                    <div className="flex flex-col items-center justify-center py-12">
+                      <div className="bg-muted/50 p-4 rounded-full mb-4">
+                        <FileJson className="h-10 w-10 text-muted-foreground" />
+                      </div>
+                      <h3 className="text-lg font-medium text-foreground mb-1">Методы еще не загружены</h3>
+                      <p className="text-sm text-muted-foreground mb-6 max-w-xs mx-auto">
+                        Импортируйте вашу OpenAPI спецификацию, чтобы начать использовать API действия в ваших пайплайнах.
+                      </p>
+                      <Button
+                        onClick={() => setIsImportModalOpen(true)}
+                        className="gap-2"
+                      >
+                        <FileJson className="h-4 w-4" />
+                        Import Swagger
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               )}
             </TableBody>
           </Table>
         </div>
-        
+
         {/* Pagination Placeholder */}
         <div className="p-4 border-t border-border bg-muted/30 flex items-center justify-between text-xs text-muted-foreground">
           <span>Показано {filteredActions.length} из {MOCK_ACTIONS.length} действий</span>
@@ -165,6 +188,14 @@ const Actions: React.FC = () => {
           </div>
         </div>
       </div>
+      <SwaggerImportModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        onImport={(data) => {
+          console.log('Imported data:', data);
+          // Here logic to update actions state
+        }}
+      />
     </div>
   );
 };
