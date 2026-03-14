@@ -15,13 +15,13 @@ export interface Action {
   created_at?: string;
   updated_at?: string;
   // For UI compatibility with previous mock data
-  tag?: string; 
+  tag?: string;
 }
 
 export interface IngestResponse {
   created_count: number;
   actions: Action[];
-  success_actions?: Action[];
+  succeeded_actions?: Action[];
   failed_actions?: Array<{
     method?: string;
     path?: string;
