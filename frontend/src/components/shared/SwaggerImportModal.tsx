@@ -50,36 +50,34 @@ export const SwaggerImportModal: React.FC<SwaggerImportModalProps> = ({
 
     setIsImporting(true);
     try {
-      const reader = new FileReader();
-      reader.onload = async (e) => {
-        const content = e.target?.result as string;
+      const formData = new FormData();
+      // Отправляем файл напрямую как multipart/form-data
+      formData.append('file', selectedFile);
 
+      const response = await fetch('/api/v1/actions/ingest', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        let errorMessage = 'Failed to import';
         try {
-          const formData = new FormData();
-          const fileBlob = new Blob([content], { type: selectedFile.type });
-          formData.append('file', fileBlob, selectedFile.name);
-
-          const response = await fetch('/api/v1/actions/ingest', {
-            method: 'POST',
-            body: formData,
-          });
-
-          if (!response.ok) throw new Error('Failed to import');
-
-          const result = await response.json();
-          toast.success(`Файл ${selectedFile.name} успешно импортирован на сервер`);
-          onImport(result);
-          onClose();
-        } catch (error) {
-          toast.error('Ошибка при отправке файла на сервер');
-          console.error(error);
-        } finally {
-          setIsImporting(false);
+          const errorData = await response.json();
+          errorMessage = errorData.message || errorMessage;
+        } catch (e) {
+          // Fallback if response is not JSON
         }
-      };
-      reader.readAsText(selectedFile);
-    } catch (error) {
-      toast.error('Ошибка при чтении файла');
+        throw new Error(errorMessage);
+      }
+
+      const result = await response.json();
+      toast.success(`Файл ${selectedFile.name} успешно импортирован на сервер`);
+      onImport(result);
+      onClose();
+    } catch (error: any) {
+      toast.error(error.message || 'Ошибка при отправке файла на сервер');
+      console.error(error);
+    } finally {
       setIsImporting(false);
     }
   };
@@ -93,6 +91,7 @@ export const SwaggerImportModal: React.FC<SwaggerImportModalProps> = ({
     setIsImporting(true);
     try {
       const formData = new FormData();
+      // Создаем блоб из текста и отправляем как файл
       const specBlob = new Blob([spec], { type: 'application/json' });
       formData.append('file', specBlob, 'manual_import.json');
 
@@ -101,14 +100,23 @@ export const SwaggerImportModal: React.FC<SwaggerImportModalProps> = ({
         body: formData,
       });
 
-      if (!response.ok) throw new Error('Failed to import');
+      if (!response.ok) {
+        let errorMessage = 'Failed to import';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.message || errorMessage;
+        } catch (e) {
+          // Fallback if response is not JSON
+        }
+        throw new Error(errorMessage);
+      }
 
       const result = await response.json();
       toast.success('Методы успешно импортированы на сервер');
       onImport(result);
       onClose();
-    } catch (error) {
-      toast.error('Ошибка при отправке спецификации на сервер');
+    } catch (error: any) {
+      toast.error(error.message || 'Ошибка при отправке спецификации на сервер');
       console.error(error);
     } finally {
       setIsImporting(false);
