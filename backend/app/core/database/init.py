@@ -14,10 +14,19 @@ async def init_db():
             text("ALTER TABLE actions ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT FALSE")
         )
         await conn.execute(
+            text("ALTER TABLE actions ADD COLUMN IF NOT EXISTS ingest_status VARCHAR(32) NOT NULL DEFAULT 'SUCCEEDED'")
+        )
+        await conn.execute(
+            text("ALTER TABLE actions ADD COLUMN IF NOT EXISTS ingest_error TEXT")
+        )
+        await conn.execute(
             text("CREATE INDEX IF NOT EXISTS ix_actions_method_path ON actions (method, path)")
         )
         await conn.execute(
             text("CREATE INDEX IF NOT EXISTS ix_actions_is_deleted ON actions (is_deleted)")
+        )
+        await conn.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_actions_ingest_status ON actions (ingest_status)")
         )
 
     async with SessionLocal() as session:

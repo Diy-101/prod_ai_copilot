@@ -19,6 +19,11 @@ class HttpMethod(str, enum.Enum):
     OPTIONS = "OPTIONS"
 
 
+class ActionIngestStatus(str, enum.Enum):
+    SUCCEEDED = "SUCCEEDED"
+    FAILED = "FAILED"
+
+
 class Action(TimestampMixin, Base):
     """
     Технический слой.
@@ -100,6 +105,19 @@ class Action(TimestampMixin, Base):
         JSON,
         nullable=True,
         comment="Оригинальный JSON-фрагмент операции из спецификации",
+    )
+    ingest_status: Mapped[ActionIngestStatus] = mapped_column(
+        Enum(ActionIngestStatus, name="action_ingest_status", native_enum=False),
+        nullable=False,
+        default=ActionIngestStatus.SUCCEEDED,
+        server_default=ActionIngestStatus.SUCCEEDED.value,
+        index=True,
+        comment="Результат обработки Action при ingest",
+    )
+    ingest_error: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Текст ошибки ingest, если Action не удалось обработать",
     )
     is_deleted: Mapped[bool] = mapped_column(
         Boolean,

@@ -5,7 +5,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database.session import get_session
-from app.models import Action, HttpMethod
+from app.models import Action, ActionIngestStatus, HttpMethod
 from app.schemas.action_sch import ActionListItemResponse
 
 
@@ -24,6 +24,7 @@ async def list_actions(
     query = (
         select(Action)
         .where(Action.is_deleted.is_(False))
+        .where(Action.ingest_status == ActionIngestStatus.SUCCEEDED)
         .order_by(Action.created_at.desc())
         .limit(limit)
         .offset(offset)

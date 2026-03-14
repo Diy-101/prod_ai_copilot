@@ -5,11 +5,11 @@ from uuid import UUID
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Action
+from app.models import Action, ActionIngestStatus
 
 
 async def get_active_action_or_404(session: AsyncSession, action_id: UUID) -> Action:
     action = await session.get(Action, action_id)
-    if action is None or action.is_deleted:
+    if action is None or action.is_deleted or action.ingest_status != ActionIngestStatus.SUCCEEDED:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Action not found")
     return action

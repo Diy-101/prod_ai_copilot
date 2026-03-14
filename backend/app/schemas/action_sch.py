@@ -6,7 +6,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, computed_field
 
-from app.models import HttpMethod
+from app.models import ActionIngestStatus, HttpMethod
 
 
 class ActionListItemResponse(BaseModel):
@@ -19,6 +19,8 @@ class ActionListItemResponse(BaseModel):
     description: str | None = None
     tags: list[str] | None = None
     source_filename: str | None = None
+    ingest_status: ActionIngestStatus
+    ingest_error: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -46,5 +48,7 @@ class ActionDetailResponse(ActionListItemResponse):
 
 
 class ActionIngestResponse(BaseModel):
-    created_count: int
-    actions: list[ActionDetailResponse]
+    succeeded_count: int
+    failed_count: int
+    succeeded_actions: list[ActionDetailResponse]
+    failed_actions: list[ActionDetailResponse]

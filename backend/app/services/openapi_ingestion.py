@@ -5,7 +5,7 @@ from typing import Any
 
 import yaml
 
-from app.models import HttpMethod
+from app.models import ActionIngestStatus, HttpMethod
 
 
 SUPPORTED_METHODS = {method.value.lower(): method for method in HttpMethod}
@@ -41,8 +41,17 @@ def extract_actions_from_document(
     *,
     source_filename: str | None = None,
 ) -> list[dict[str, Any]]:
+    return extract_actions_with_failures_from_document(document, source_filename=source_filename)["succeeded"]
+
+
+def extract_actions_with_failures_from_document(
+    document: dict[str, Any],
+    *,
+    source_filename: str | None = None,
+) -> dict[str, list[dict[str, Any]]]:
     base_url = _extract_base_url(document)
-    actions: list[dict[str, Any]] = []
+    succeeded_actions: list[dict[str, Any]] = []
+    failed_actions: list[dict[str, Any]] = []
 
     for path, path_item in document.get("paths", {}).items():
         if not isinstance(path_item, dict):
@@ -54,29 +63,106 @@ def extract_actions_from_document(
             if method_name not in SUPPORTED_METHODS:
                 continue
             if not isinstance(operation, dict):
+                failed_actions.append(
+                    _build_failed_action_payload(
+                        method_name=method_name,
+                        path=path,
+                        base_url=base_url,
+                        source_filename=source_filename,
+                        raw_spec=operation,
+                        error_message="Operation definition must be an object",
+                    )
+                )
                 continue
 
-            normalized_operation = _dereference(operation, document)
-            parameters = _merge_parameters(shared_parameters, normalized_operation.get("parameters", []), document)
+            try:
+                succeeded_actions.append(
+                    _build_succeeded_action_payload(
+                        method_name=method_name,
+                        path=path,
+                        operation=operation,
+                        shared_parameters=shared_parameters,
+                        document=document,
+                        base_url=base_url,
+                        source_filename=source_filename,
+                    )
+                )
+            except ValueError as exc:
+                failed_actions.append(
+                    _build_failed_action_payload(
+                        method_name=method_name,
+                        path=path,
+                        base_url=base_url,
+                        source_filename=source_filename,
+                        raw_spec=operation,
+                        error_message=str(exc),
+                    )
+                )
 
-            actions.append(
-                {
-                    "operation_id": normalized_operation.get("operationId") or _build_operation_id(method_name, path),
-                    "method": SUPPORTED_METHODS[method_name],
-                    "path": path,
-                    "base_url": base_url,
-                    "summary": normalized_operation.get("summary"),
-                    "description": normalized_operation.get("description"),
-                    "tags": normalized_operation.get("tags"),
-                    "parameters_schema": _build_parameters_schema(parameters, document),
-                    "request_body_schema": _extract_request_body_schema(normalized_operation, document),
-                    "response_schema": _extract_response_schema(normalized_operation, document),
-                    "source_filename": source_filename,
-                    "raw_spec": normalized_operation,
-                }
-            )
+    return {
+        "succeeded": succeeded_actions,
+        "failed": failed_actions,
+    }
 
-    return actions
+
+def _build_succeeded_action_payload(
+    *,
+    method_name: str,
+    path: str,
+    operation: dict[str, Any],
+    shared_parameters: list[Any] | None,
+    document: dict[str, Any],
+    base_url: str | None,
+    source_filename: str | None,
+) -> dict[str, Any]:
+    normalized_operation = _dereference(operation, document)
+    parameters = _merge_parameters(shared_parameters, normalized_operation.get("parameters", []), document)
+
+    return {
+        "operation_id": normalized_operation.get("operationId") or _build_operation_id(method_name, path),
+        "method": SUPPORTED_METHODS[method_name],
+        "path": path,
+        "base_url": base_url,
+        "summary": normalized_operation.get("summary"),
+        "description": normalized_operation.get("description"),
+        "tags": normalized_operation.get("tags"),
+        "parameters_schema": _build_parameters_schema(parameters, document),
+        "request_body_schema": _extract_request_body_schema(normalized_operation, document),
+        "response_schema": _extract_response_schema(normalized_operation, document),
+        "source_filename": source_filename,
+        "raw_spec": normalized_operation,
+        "ingest_status": ActionIngestStatus.SUCCEEDED,
+        "ingest_error": None,
+    }
+
+
+def _build_failed_action_payload(
+    *,
+    method_name: str,
+    path: str,
+    base_url: str | None,
+    source_filename: str | None,
+    raw_spec: Any,
+    error_message: str,
+) -> dict[str, Any]:
+    operation = raw_spec if isinstance(raw_spec, dict) else {}
+
+    return {
+        "operation_id": operation.get("operationId") or _build_operation_id(method_name, path),
+        "method": SUPPORTED_METHODS[method_name],
+        "path": path,
+        "base_url": base_url,
+        "summary": operation.get("summary"),
+        "description": operation.get("description"),
+        "tags": operation.get("tags"),
+        "parameters_schema": None,
+        "request_body_schema": None,
+        "response_schema": None,
+        "source_filename": source_filename,
+        "raw_spec": operation or None,
+        "ingest_status": ActionIngestStatus.FAILED,
+        "ingest_error": error_message,
+    }
 
 
 def _extract_base_url(document: dict[str, Any]) -> str | None:
