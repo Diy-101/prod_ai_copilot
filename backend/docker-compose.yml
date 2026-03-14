@@ -13,6 +13,7 @@ services:
     environment:
       - DATABASE_URL=postgresql+asyncpg://user:password@db:5432/dbname
       - REDIS_URL=redis://redis:6379/0
+      - OLLAMA_HOST=${OLLAMA_HOST:-http://158.160.90.60:8067}
     depends_on:
       db:
         condition: service_healthy
