@@ -1,0 +1,7 @@
+services:
+  ml-planner:
+    image: ${DOCKER_IMAGE}:${TAG}
+    container_name: ml-planner
+    restart: always
+    ports:
+      - "8000:8000"

@@ -1,0 +1,83 @@
+stages:
+  - lint
+  - test
+  - build
+  - deploy
+
+variables:
+  PYTHON_IMAGE: "python:3.12-slim"
+  DOCKER_IMAGE: "$CI_REGISTRY_IMAGE"
+  APP_DIR: "."
+
+.python-base:
+  image: $PYTHON_IMAGE
+  before_script:
+    - python -m pip install --upgrade pip
+    - |
+      if [ "$APP_DIR" = "." ]; then
+        pip install -e ".[dev]"
+      else
+        pip install -e "./$APP_DIR[dev]"
+      fi
+    - export PYTHONPATH="$PYTHONPATH:$(pwd)/$APP_DIR"
+
+lint:
+  stage: lint
+  extends: .python-base
+  script:
+    - pip install ruff
+    - ruff check "$APP_DIR/src" "$APP_DIR/tests"
+
+test:
+  stage: test
+  extends: .python-base
+  script:
+    - pytest "$APP_DIR/tests"
+
+build:
+  stage: build
+  image: docker:24.0.5
+  services:
+    - name: docker:24.0.5-dind
+      alias: docker
+      command: ["--tls=false"]
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
+    DOCKER_DRIVER: overlay2
+  before_script:
+    - until docker info; do sleep 1; done
+  script:
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
+    - docker build --pull -t "$DOCKER_IMAGE:latest" -t "$DOCKER_IMAGE:$CI_COMMIT_SHORT_SHA" "$APP_DIR"
+    - docker push "$DOCKER_IMAGE:latest"
+    - docker push "$DOCKER_IMAGE:$CI_COMMIT_SHORT_SHA"
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "master"'
+
+deploy:
+  stage: deploy
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache openssh-client
+    - eval "$(ssh-agent -s)"
+    - '[[ -z "$SSH_PRIVATE_KEY" ]] && echo "SSH_PRIVATE_KEY is empty" && exit 1'
+    - '[[ -z "$SSH_KNOWN_HOSTS" ]] && echo "SSH_KNOWN_HOSTS is empty" && exit 1'
+    - '[[ -z "$DEPLOY_PATH" ]] && echo "DEPLOY_PATH is empty" && exit 1'
+    - 'echo "$SSH_PRIVATE_KEY" | tr -d "\r" | ssh-add - > /dev/null'
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - 'echo "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts'
+    - chmod 644 ~/.ssh/known_hosts
+  script:
+    - |
+      ssh "$SERVER_USER@$SERVER_IP" "
+        cd $DEPLOY_PATH &&
+        echo 'DOCKER_IMAGE=$DOCKER_IMAGE' > .env &&
+        echo 'TAG=$CI_COMMIT_SHORT_SHA' >> .env &&
+        docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY &&
+        docker compose pull &&
+        docker compose up -d
+      "
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "master"'
