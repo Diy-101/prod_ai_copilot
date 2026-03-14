@@ -37,3 +37,22 @@ class PlanResponse(BaseModel):
     task: str
     candidate_pipelines: list[PipelineResponse]
     best_pipeline_id: str
+
+
+class Step(BaseModel):
+    capability: str
+    source_name: str
+    reason: str
+
+
+class ComposePlanRequest(BaseModel):
+    task: str
+    source_names: list[str]
+    top_k: int = Field(default=5, ge=1)
+    max_steps: int = Field(default=5, ge=1)
+
+
+class ComposePlanResponse(BaseModel):
+    status: str
+    task: str
+    steps: list[Step]
