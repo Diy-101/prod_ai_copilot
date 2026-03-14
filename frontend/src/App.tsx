@@ -10,6 +10,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { ActionProvider } from "@/contexts/ActionContext";
 import { Layout } from "@/components/layout/Layout";
 import Actions from "./pages/Actions";
 import Home from "./pages/Home";
@@ -72,7 +73,8 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <AuthProvider>
       <TooltipProvider>
-        {/* Toast notification system configuration */}
+        <ActionProvider>
+          {/* Toast notification system configuration */}
         <Toaster
           position="top-right"
           theme="light"
@@ -94,6 +96,7 @@ const App = () => (
         <BrowserRouter basename="/">
           <AppRoutes />
         </BrowserRouter>
+        </ActionProvider>
       </TooltipProvider>
     </AuthProvider>
   </QueryClientProvider>

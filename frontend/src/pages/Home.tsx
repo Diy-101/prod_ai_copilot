@@ -5,13 +5,18 @@ import { FileJson, Send, Sparkles, Wand2, Shield, Zap } from 'lucide-react';
 import { SwaggerImportModal } from '@/components/shared/SwaggerImportModal';
 import { ImportResultsModal } from '@/components/shared/ImportResultsModal';
 import { useNavigate } from 'react-router-dom';
+import { Action } from '@/types/action';
+import { useActionsContext } from '@/contexts/ActionContext';
 
 const Home: React.FC = () => {
+  const { actions, addActions } = useActionsContext();
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isResultsModalOpen, setIsResultsModalOpen] = useState(false);
-  const [importResults, setImportResults] = useState<{ success_actions: any[], failed_actions: any[] } | null>(null);
+  const [importResults, setImportResults] = useState<{ success_actions: Action[], failed_actions: any[] } | null>(null);
   const [chatMessage, setChatMessage] = useState('');
   const navigate = useNavigate();
+
+  const isChatDisabled = actions.length === 0;
 
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
@@ -56,7 +61,12 @@ const Home: React.FC = () => {
             <Button
               type="submit"
               size="icon"
-              className="absolute right-2 top-2 h-10 w-10 rounded-xl bg-primary hover:bg-primary/90 transition-transform active:scale-95"
+              disabled={isChatDisabled}
+              className={`absolute right-2 top-2 h-10 w-10 rounded-xl transition-transform active:scale-95 ${
+                isChatDisabled 
+                ? 'bg-muted text-muted-foreground cursor-not-allowed opacity-50' 
+                : 'bg-primary hover:bg-primary/90'
+              }`}
             >
               <Send className="h-5 w-5" />
             </Button>
@@ -107,6 +117,9 @@ const Home: React.FC = () => {
           if (data && (data.success_actions || data.actions)) {
             const successList = data.success_actions || data.actions || [];
             const failedList = data.failed_actions || [];
+            
+            // Update global context with successful actions
+            addActions(successList);
 
             setImportResults({
               success_actions: successList,

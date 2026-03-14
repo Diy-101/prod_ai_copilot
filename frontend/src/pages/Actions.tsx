@@ -28,6 +28,8 @@ import {
 import { SwaggerImportModal } from '@/components/shared/SwaggerImportModal';
 import { ImportResultsModal } from '@/components/shared/ImportResultsModal';
 import { toast } from 'sonner';
+import { Action } from '@/types/action';
+import { useActionsContext } from '@/contexts/ActionContext';
 
 // Mock data for Actions
 const MOCK_ACTIONS = [
@@ -41,17 +43,17 @@ const MOCK_ACTIONS = [
 ];
 
 const Actions: React.FC = () => {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [actions, setActions] = useState([]);
+  const {
+    actions,
+    searchTerm,
+    setSearchTerm,
+    filteredActions,
+    addActions
+  } = useActionsContext();
+  
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isResultsModalOpen, setIsResultsModalOpen] = useState(false);
-  const [importResults, setImportResults] = useState<{ success_actions: any[], failed_actions: any[] } | null>(null);
-
-  const filteredActions = actions.filter((action: any) =>
-    action.path?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (action.tags && action.tags[0]?.toLowerCase().includes(searchTerm.toLowerCase())) ||
-    action.summary?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const [importResults, setImportResults] = useState<{ success_actions: Action[], failed_actions: any[] } | null>(null);
 
   const getMethodColor = (method: string) => {
     switch (method) {
@@ -196,7 +198,7 @@ const Actions: React.FC = () => {
             const failedList = data.failed_actions || [];
             
             // Update main table with successful actions
-            setActions(prev => [...successList, ...prev]);
+            addActions(successList);
             
             // Prepare and open results modal
             setImportResults({
