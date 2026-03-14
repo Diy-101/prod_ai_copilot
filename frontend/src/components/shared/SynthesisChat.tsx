@@ -24,9 +24,15 @@ interface SynthesisChatProps {
   onSynthesize?: (prompt: string) => void;
   className?: string;
   initialMessage?: string;
+  initialDialogId?: string;
 }
 
-export const SynthesisChat: React.FC<SynthesisChatProps> = ({ onSynthesize, className, initialMessage }) => {
+export const SynthesisChat: React.FC<SynthesisChatProps> = ({ 
+  onSynthesize, 
+  className, 
+  initialMessage,
+  initialDialogId 
+}) => {
   const [messages, setMessages] = useState<Message[]>([
     { 
       role: 'assistant', 
@@ -34,6 +40,7 @@ export const SynthesisChat: React.FC<SynthesisChatProps> = ({ onSynthesize, clas
     }
   ]);
   const [inputValue, setInputValue] = useState('');
+  const [dialogId] = useState<string>(initialDialogId || crypto.randomUUID());
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -58,7 +65,12 @@ export const SynthesisChat: React.FC<SynthesisChatProps> = ({ onSynthesize, clas
     setInputValue('');
 
     // Send message to generate pipeline endpoint
-    generatePipeline(userMessage);
+    generatePipeline({
+      dialog_id: dialogId,
+      message: userMessage,
+      user_id: null,
+      capability_ids: null
+    });
 
     // Simulate AI response
     setTimeout(() => {

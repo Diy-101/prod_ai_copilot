@@ -27,12 +27,24 @@ const Home: React.FC = () => {
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!chatMessage.trim()) return;
-    
+
+    const dialogId = crypto.randomUUID();
+
     // Send message to generate pipeline endpoint
-    await generatePipeline(chatMessage);
-    
-    // Navigate to pipelines page with the message state
-    navigate('/pipelines', { state: { initialMessage: chatMessage } });
+    await generatePipeline({
+      dialog_id: dialogId,
+      message: chatMessage,
+      user_id: null,
+      capability_ids: null
+    });
+
+    // Navigate to pipelines page with the message and dialog state
+    navigate('/pipelines', {
+      state: {
+        initialMessage: chatMessage,
+        dialogId: dialogId
+      }
+    });
     setChatMessage('');
   };
 
@@ -76,11 +88,10 @@ const Home: React.FC = () => {
                     type="submit"
                     size="icon"
                     disabled={isChatDisabled}
-                    className={`h-10 w-10 rounded-xl transition-transform active:scale-95 ${
-                      isChatDisabled 
-                      ? 'bg-muted text-muted-foreground cursor-not-allowed opacity-50' 
-                      : 'bg-primary hover:bg-primary/90'
-                    }`}
+                    className={`h-10 w-10 rounded-xl transition-transform active:scale-95 ${isChatDisabled
+                        ? 'bg-muted text-muted-foreground cursor-not-allowed opacity-50'
+                        : 'bg-primary hover:bg-primary/90'
+                      }`}
                   >
                     <Send className="h-5 w-5" />
                   </Button>
@@ -139,7 +150,7 @@ const Home: React.FC = () => {
           if (data && (data.succeeded_actions || data.actions)) {
             const successList = data.succeeded_actions || data.actions || [];
             const failedList = data.failed_actions || [];
-            
+
             // Update global context with successful actions
             addActions(successList);
 
