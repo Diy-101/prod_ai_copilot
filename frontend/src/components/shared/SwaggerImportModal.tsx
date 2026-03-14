@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -14,7 +14,6 @@ import { Label } from '@/components/ui/label';
 import { FileCode, Upload, Loader2, FileJson, CheckCircle2 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
-import { ingestSwagger } from '@/api/actions';
 
 interface SwaggerImportModalProps {
   isOpen: boolean;
@@ -31,6 +30,18 @@ export const SwaggerImportModal: React.FC<SwaggerImportModalProps> = ({
   const [spec, setSpec] = useState('');
   const [isImporting, setIsImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Reset state when modal is closed
+  useEffect(() => {
+    if (!isOpen) {
+      setSelectedFile(null);
+      setSpec('');
+      setIsImporting(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  }, [isOpen]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -51,25 +62,34 @@ export const SwaggerImportModal: React.FC<SwaggerImportModalProps> = ({
 
     setIsImporting(true);
     try {
-      const reader = new FileReader();
-      reader.onload = async (e) => {
-        const content = e.target?.result as string;
+      const formData = new FormData();
+      // Отправляем файл напрямую как multipart/form-data
+      formData.append('file', selectedFile);
 
+      const response = await fetch('/api/v1/actions/ingest', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        let errorMessage = 'Failed to import';
         try {
-          const result = await ingestSwagger('file', content, selectedFile.name);
-          toast.success(`Файл ${selectedFile.name} успешно импортирован на сервер`);
-          onImport(result);
-          onClose();
-        } catch (error: any) {
-          toast.error(error.message || 'Ошибка при отправке файла на сервер');
-          console.error(error);
-        } finally {
-          setIsImporting(false);
+          const errorData = await response.json();
+          errorMessage = errorData.message || errorMessage;
+        } catch (e) {
+          // Fallback if response is not JSON
         }
-      };
-      reader.readAsText(selectedFile);
-    } catch (error) {
-      toast.error('Ошибка при чтении файла');
+        throw new Error(errorMessage);
+      }
+
+      const result = await response.json();
+      toast.success(`Файл ${selectedFile.name} успешно импортирован на сервер`);
+      onImport(result);
+      onClose();
+    } catch (error: any) {
+      toast.error(error.message || 'Ошибка при отправке файла на сервер');
+      console.error(error);
+    } finally {
       setIsImporting(false);
     }
   };
@@ -82,7 +102,28 @@ export const SwaggerImportModal: React.FC<SwaggerImportModalProps> = ({
 
     setIsImporting(true);
     try {
-      const result = await ingestSwagger('manual', spec);
+      const formData = new FormData();
+      // Создаем блоб из текста и отправляем как файл
+      const specBlob = new Blob([spec], { type: 'application/json' });
+      formData.append('file', specBlob, 'manual_import.json');
+
+      const response = await fetch('/api/v1/actions/ingest', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        let errorMessage = 'Failed to import';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.message || errorMessage;
+        } catch (e) {
+          // Fallback if response is not JSON
+        }
+        throw new Error(errorMessage);
+      }
+
+      const result = await response.json();
       toast.success('Методы успешно импортированы на сервер');
       onImport(result);
       onClose();

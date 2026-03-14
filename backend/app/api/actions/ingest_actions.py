@@ -5,10 +5,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database.session import get_session
 from app.models import Action, ActionIngestStatus
-from app.schemas.action_sch import ActionIngestResponse
-from app.services.openapi_ingestion import extract_actions_with_failures_from_document, load_openapi_document
 from app.schemas.capability_sch import ActionIngestWithCapabilitiesResponse
-from app.services.capability_ingestion import ingest_openapi_to_capabilities
+from app.services.capability_ingestion import build_capabilities_from_actions
+from app.services.openapi_ingestion import extract_actions_with_failures_from_document, load_openapi_document
 
 
 router = APIRouter(tags=["Actions"])
@@ -19,6 +18,7 @@ async def ingest_actions(
     file: UploadFile = File(...),
     session: AsyncSession = Depends(get_session),
 ):
+    payload = await file.read()
     try:
         document = load_openapi_document(payload)
         ingestion_result = extract_actions_with_failures_from_document(document, source_filename=file.filename)
@@ -31,17 +31,25 @@ async def ingest_actions(
 
     actions = [Action(**action_payload) for action_payload in action_payloads]
     session.add_all(actions)
-    await session.commit()
-
-    for action in actions:
-        await session.refresh(action)
+    await session.flush()
 
     succeeded_actions = [action for action in actions if action.ingest_status == ActionIngestStatus.SUCCEEDED]
     failed_actions = [action for action in actions if action.ingest_status == ActionIngestStatus.FAILED]
 
-    return ActionIngestResponse(
+    capabilities = build_capabilities_from_actions(succeeded_actions)
+    session.add_all(capabilities)
+    await session.commit()
+
+    for action in actions:
+        await session.refresh(action)
+    for capability in capabilities:
+        await session.refresh(capability)
+
+    return ActionIngestWithCapabilitiesResponse(
         succeeded_count=len(succeeded_actions),
         failed_count=len(failed_actions),
+        created_capabilities_count=len(capabilities),
         succeeded_actions=succeeded_actions,
         failed_actions=failed_actions,
+        capabilities=capabilities,
     )
