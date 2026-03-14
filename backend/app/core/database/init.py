@@ -19,6 +19,16 @@ async def init_db():
         await conn.execute(
             text("CREATE INDEX IF NOT EXISTS ix_actions_is_deleted ON actions (is_deleted)")
         )
+        await conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_capabilities_action_id ON capabilities (action_id)"
+            )
+        )
+        await conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_capabilities_name ON capabilities (name)"
+            )
+        )
 
     async with SessionLocal() as session:
         admin_email = os.getenv("ADMIN_EMAIL")
