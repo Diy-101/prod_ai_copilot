@@ -1,5 +1,4 @@
 import uuid
-
 import pytest
 from httpx import ASGITransport, AsyncClient
 
@@ -11,7 +10,15 @@ from app.services.semantic_selection import SelectedCapability
 
 
 class DummySession:
-    pass
+    def add(self, *args, **kwargs): pass
+    async def flush(self, *args, **kwargs): pass
+    async def commit(self, *args, **kwargs): pass
+    async def refresh(self, *args, **kwargs): pass
+
+
+class FakeDialogMemory:
+    async def get_context(self, *args): return [], "test summary"
+    async def append_and_summarize(self, *args): return "updated summary"
 
 
 @pytest.mark.asyncio
@@ -47,6 +54,10 @@ async def test_generate_pipeline_graph_success(monkeypatch):
         "app.services.pipeline_generation.PipelineGenerationService.generate_raw_graph",
         fake_generate_raw_graph,
     )
+    monkeypatch.setattr(
+        "app.services.pipeline_generation.DialogMemoryService",
+        lambda *args, **kwargs: FakeDialogMemory(),
+    )
     app.dependency_overrides[get_session] = override_session
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -56,10 +67,10 @@ async def test_generate_pipeline_graph_success(monkeypatch):
 
     assert response.status_code == 200
     payload = response.json()
-    assert "raw_graph" in payload
-    assert "nodes" in payload["raw_graph"]
-    assert "edges" in payload["raw_graph"]
-    assert payload["capabilities_used"][0]["id"] == str(capability.id)
+    assert payload["status"] == "ready"
+    assert "nodes" in payload
+    assert "edges" in payload
+    assert len(payload["nodes"]) == 1
 
 
 @pytest.mark.asyncio
@@ -74,6 +85,10 @@ async def test_generate_pipeline_graph_returns_404_when_no_capabilities(monkeypa
         "app.services.semantic_selection.SemanticSelectionService.select_capabilities",
         fake_select_capabilities,
     )
+    monkeypatch.setattr(
+        "app.services.pipeline_generation.DialogMemoryService",
+        lambda *args, **kwargs: FakeDialogMemory(),
+    )
     app.dependency_overrides[get_session] = override_session
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -81,7 +96,10 @@ async def test_generate_pipeline_graph_returns_404_when_no_capabilities(monkeypa
     finally:
         app.dependency_overrides.clear()
 
-    assert response.status_code == 404
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "needs_input"
+    assert "Не удалось найти подходящих инструментов" in payload["message_ru"]
 
 
 @pytest.mark.asyncio
@@ -110,6 +128,10 @@ async def test_generate_pipeline_graph_returns_502_on_llm_error(monkeypatch):
         "app.services.pipeline_generation.PipelineGenerationService.generate_raw_graph",
         fake_generate_raw_graph,
     )
+    monkeypatch.setattr(
+        "app.services.pipeline_generation.DialogMemoryService",
+        lambda *args, **kwargs: FakeDialogMemory(),
+    )
     app.dependency_overrides[get_session] = override_session
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -117,7 +139,10 @@ async def test_generate_pipeline_graph_returns_502_on_llm_error(monkeypatch):
     finally:
         app.dependency_overrides.clear()
 
-    assert response.status_code == 502
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "cannot_build"
+    assert "Failed to call Ollama" in payload["message_ru"]
 
 
 @pytest.mark.asyncio
