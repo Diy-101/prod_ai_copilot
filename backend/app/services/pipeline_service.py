@@ -53,6 +53,10 @@ class PipelineService:
                 "context_summary": None,
             }
 
+        dialog_messages, dialog_summary = await self.dialog_memory.get_context(
+            str(dialog_id)
+        )
+
         if capability_ids:
             capabilities = await self.capability_service.get_capabilities(
                 capability_ids=capability_ids
@@ -61,9 +65,14 @@ class PipelineService:
                 SelectedCapability(capability=c, score=1.0) for c in capabilities
             ]
         else:
+            selection_query = self._build_selection_query(
+                message=message,
+                dialog_messages=dialog_messages,
+                dialog_summary=dialog_summary,
+            )
             selected_capabilities = await self.semantic_selector.select_capabilities(
                 self.session,
-                message,
+                selection_query,
                 limit=10,
             )
 
@@ -71,15 +80,14 @@ class PipelineService:
             return {
                 "status": "needs_input",
                 "message_ru": "Не удалось найти подходящих инструментов. Добавьте OpenAPI/Swagger.",
-                "chat_reply_ru": "Пожалуйста, загрузите OpenAPI/Swagger спецификацию, чтобы я мог построить сценарий.",
+                "chat_reply_ru": (
+                    "Не нашёл релевантных инструментов под этот запрос. "
+                    "Уточните задачу или загрузите подходящую OpenAPI/Swagger спецификацию."
+                ),
                 "nodes": [],
                 "edges": [],
-                "context_summary": None,
+                "context_summary": dialog_summary,
             }
-
-        dialog_messages, dialog_summary = await self.dialog_memory.get_context(
-            str(dialog_id)
-        )
         prompt = self._build_generation_prompt(
             user_query=message,
             selected_capabilities=selected_capabilities,
@@ -255,24 +263,13 @@ class PipelineService:
             f"USER_QUERY:\n{user_query}\n\n"
             f"DIALOG_CONTEXT:\n{json.dumps(context_payload, ensure_ascii=False)}\n\n"
             f"CAPABILITIES:\n{json.dumps(capabilities_payload, ensure_ascii=False)}\n\n"
-            "If you see a recurring sequence of steps or a logically complex operation that can be encapsulated, "
-            "you can define a 'macro' (Composite Capability) in the 'new_macros' field. "
-            "Nodes can then reference these macros by their name or UUID if provided.\n\n"
             "OUTPUT_SCHEMA:\n"
             "{\n"
-            '  "new_macros": [\n'
-            "    {\n"
-            '      "name": "macro_name",\n'
-            '      "description": "Description",\n'
-            '      "input_schema": {}, "output_schema": {},\n'
-            '      "recipe": { "steps": [ { "action_id": "...", "input_map": {} } ] }\n'
-            "    }\n"
-            "  ],\n"
             '  "nodes": [\n'
             "    {\n"
             '      "step": 1,\n'
             '      "name": "Step name",\n'
-            '      "capability_id": "UUID or macro_name",\n'
+            '      "capability_id": "UUID from CAPABILITIES",\n'
             "      ...\n"
             "    }\n"
             "  ],\n"
@@ -284,6 +281,24 @@ class PipelineService:
             "- В ответ выводи только итоговый JSON.\n"
         )
 
+    def _build_selection_query(
+        self,
+        *,
+        message: str,
+        dialog_messages: list[dict[str, Any]],
+        dialog_summary: str | None,
+    ) -> str:
+        recent_chunks = [
+            str(item.get("content", ""))
+            for item in dialog_messages[-4:]
+            if isinstance(item, dict) and item.get("role") == "user"
+        ]
+        parts = [str(message or "").strip()]
+        if dialog_summary:
+            parts.append(dialog_summary)
+        parts.extend(chunk for chunk in recent_chunks if chunk)
+        return "\n".join(part for part in parts if part)
+
     def _normalize_workflow(
         self,
         raw_graph: dict[str, Any],
@@ -293,7 +308,6 @@ class PipelineService:
             str(sc.capability.id): sc.capability for sc in selected_capabilities
         }
         capabilities = [sc.capability for sc in selected_capabilities]
-        used_capability_ids: set[str] = set()
 
         raw_nodes = raw_graph.get("nodes") if isinstance(raw_graph, dict) else None
         if not isinstance(raw_nodes, list):
@@ -321,13 +335,11 @@ class PipelineService:
                 capability_id=capability_id_raw,
                 capabilities=capabilities,
                 capabilities_by_id=capabilities_by_id,
-                used_capability_ids=used_capability_ids,
             )
 
             if cap is None:
                 endpoints_payload = []
             else:
-                used_capability_ids.add(str(cap.id))
                 endpoints_payload = [
                     {
                         "name": cap.name,
@@ -517,7 +529,6 @@ class PipelineService:
         capability_id: Any,
         capabilities: list[Any],
         capabilities_by_id: dict[str, Any],
-        used_capability_ids: set[str],
     ) -> Any | None:
         if capability_id:
             by_id = capabilities_by_id.get(str(capability_id))
@@ -547,14 +558,10 @@ class PipelineService:
                 best_score = score
                 best_cap = cap
 
-        if best_cap is not None and best_score > 0:
+        if best_cap is not None and best_score >= 0.55:
             return best_cap
 
-        for cap in capabilities:
-            if str(getattr(cap, "id", "")) not in used_capability_ids:
-                return cap
-
-        return capabilities[0] if capabilities else None
+        return None
 
     def _best_hint_score(self, hints: list[str], cap_name: str, cap_desc: str) -> float:
         cap_name_tokens = self._tokenize_text(cap_name)
