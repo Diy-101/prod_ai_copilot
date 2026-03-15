@@ -315,9 +315,7 @@ class PipelineService:
                         "name": cap.name,
                         "capability_id": str(cap.id),
                         "action_id": str(cap.action_id),
-                        "capability_id": cap.id,
-                        "action_id": cap.action_id,
-                        "type": cap.type,
+                        "type": cap.type.value if hasattr(cap.type, "value") else str(cap.type),
                         "input_type": cap.input_schema,
                         "output_type": cap.output_schema,
                     }

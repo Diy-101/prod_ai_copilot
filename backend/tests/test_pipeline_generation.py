@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from app.services.pipeline_generation import PipelineGenerationError, PipelineGenerationService
+from app.services.pipeline_service import PipelineService, PipelineServiceError
 from app.services.semantic_selection import SelectedCapability
 
 
@@ -23,14 +23,14 @@ def _build_capability() -> SimpleNamespace:
     )
 
 
-def _build_service() -> PipelineGenerationService:
+def _build_service() -> PipelineService:
     session = SimpleNamespace(
         add=lambda *_: None,
         flush=AsyncMock(),
         refresh=AsyncMock(),
         commit=AsyncMock(),
     )
-    return PipelineGenerationService(session=session)
+    return PipelineService(session=session)
 
 
 def test_generate_raw_graph_returns_payload(monkeypatch):
@@ -43,9 +43,9 @@ def test_generate_raw_graph_returns_payload(monkeypatch):
     def fake_reset():
         reset_called["value"] = True
 
-    monkeypatch.setattr("app.services.pipeline_generation.reset_model_session", fake_reset)
+    monkeypatch.setattr("app.services.pipeline_service.reset_model_session", fake_reset)
     monkeypatch.setattr(
-        "app.services.pipeline_generation.chat_json",
+        "app.services.pipeline_service.chat_json",
         lambda **_: {"nodes": [], "edges": []},
     )
 
@@ -59,10 +59,10 @@ def test_generate_raw_graph_raises_on_invalid_payload(monkeypatch):
     capability = _build_capability()
     selected = [SelectedCapability(capability=capability, score=1.0)]
 
-    monkeypatch.setattr("app.services.pipeline_generation.reset_model_session", lambda: None)
-    monkeypatch.setattr("app.services.pipeline_generation.chat_json", lambda **_: None)
+    monkeypatch.setattr("app.services.pipeline_service.reset_model_session", lambda: None)
+    monkeypatch.setattr("app.services.pipeline_service.chat_json", lambda **_: None)
 
-    with pytest.raises(PipelineGenerationError):
+    with pytest.raises(PipelineServiceError):
         service.generate_raw_graph("build pipeline", selected, "prompt")
 
 
@@ -77,7 +77,7 @@ def test_generate_returns_cannot_build_when_graph_generation_fails():
     service.capability_service.get_capabilities = fake_get_capabilities
     service.dialog_memory.get_context = AsyncMock(return_value=([], "ctx summary"))
     service.dialog_memory.append_and_summarize = AsyncMock()
-    service.generate_raw_graph = lambda *_: (_ for _ in ()).throw(PipelineGenerationError("mocked failure"))
+    service.generate_raw_graph = lambda *_: (_ for _ in ()).throw(PipelineServiceError("mocked failure"))
 
     result = asyncio.run(
         service.generate(
