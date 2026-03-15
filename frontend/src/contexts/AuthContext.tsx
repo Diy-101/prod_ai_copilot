@@ -140,7 +140,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
    */
   const register = async (email: string, fullName: string, password: string) => {
     const response = await authApi.register({ email, fullName, password });
+<<<<<<< HEAD
 
+=======
+    
+>>>>>>> 1e2002eb1a8988f749938c5ee6f70cd11200f3df
     const { accessToken, user } = response;
 
     setAuthState({

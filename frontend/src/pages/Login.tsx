@@ -20,7 +20,10 @@ const Login: React.FC = () => {
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const { login, register } = useAuth();
+<<<<<<< HEAD
   const { login, register } = useAuth();
+=======
+>>>>>>> 1e2002eb1a8988f749938c5ee6f70cd11200f3df
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -33,16 +36,23 @@ const Login: React.FC = () => {
     setIsLoading(true);
     try {
       // 1. Try to login
+<<<<<<< HEAD
       // 1. Try to login
       await login(email, password);
       toast.success("Успешный вход!");
       navigate("/");
+=======
+      await login(email, password);
+      toast.success('Успешный вход!');
+      navigate('/');
+>>>>>>> 1e2002eb1a8988f749938c5ee6f70cd11200f3df
     } catch (loginError: any) {
       // 2. If login fails, try to register
       // Note: We only try to register if we suspect the user doesn't exist.
       // Since current backend returns 401 for both wrong password and missing user,
       // we attempt registration. If registration fails with 409, it means the password was wrong.
       try {
+<<<<<<< HEAD
         const defaultName = email.split("@")[0];
         await register(email, defaultName, password);
         toast.success("Аккаунт создан и выполнен вход!");
@@ -53,6 +63,18 @@ const Login: React.FC = () => {
           toast.error("Неверный пароль для этого аккаунта");
         } else {
           toast.error(regError.message || "Ошибка входа");
+=======
+        const defaultName = email.split('@')[0];
+        await register(email, defaultName, password);
+        toast.success('Аккаунт создан и выполнен вход!');
+        navigate('/');
+      } catch (regError: any) {
+        // If registration fails because user exists, then the original 401 was indeed a wrong password
+        if (regError.message.includes('уже существует')) {
+          toast.error('Неверный пароль для этого аккаунта');
+        } else {
+          toast.error(regError.message || 'Ошибка входа');
+>>>>>>> 1e2002eb1a8988f749938c5ee6f70cd11200f3df
         }
       }
     } finally {
@@ -72,10 +94,15 @@ const Login: React.FC = () => {
             </div>
           </div>
           <CardTitle className="text-2xl font-bold">Вход в систему</CardTitle>
+<<<<<<< HEAD
           <CardTitle className="text-2xl font-bold">Вход в систему</CardTitle>
           <CardDescription>
             Введите email и пароль для входа или создания аккаунта Введите email
             и пароль для входа или создания аккаунта
+=======
+          <CardDescription>
+            Введите email и пароль для входа или создания аккаунта
+>>>>>>> 1e2002eb1a8988f749938c5ee6f70cd11200f3df
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -86,7 +113,10 @@ const Login: React.FC = () => {
                 id="email"
                 type="email"
                 placeholder="email@example.com"
+<<<<<<< HEAD
                 placeholder="email@example.com"
+=======
+>>>>>>> 1e2002eb1a8988f749938c5ee6f70cd11200f3df
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 disabled={isLoading}
@@ -102,7 +132,10 @@ const Login: React.FC = () => {
                 id="password"
                 type="password"
                 placeholder="••••••••"
+<<<<<<< HEAD
                 placeholder="••••••••"
+=======
+>>>>>>> 1e2002eb1a8988f749938c5ee6f70cd11200f3df
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 disabled={isLoading}
@@ -112,9 +145,12 @@ const Login: React.FC = () => {
               <p className="text-[10px] text-muted-foreground mt-1">
                 Для новых пользователей: минимум 8 символов, буквы и цифры.
               </p>
+<<<<<<< HEAD
               <p className="text-[10px] text-muted-foreground mt-1">
                 Для новых пользователей: минимум 8 символов, буквы и цифры.
               </p>
+=======
+>>>>>>> 1e2002eb1a8988f749938c5ee6f70cd11200f3df
             </div>
             <Button
               type="submit"
@@ -126,14 +162,22 @@ const Login: React.FC = () => {
               ) : (
                 <LogIn className="h-4 w-4" />
               )}
+<<<<<<< HEAD
               {isLoading ? "Обработка..." : "Войти"}
+=======
+              {isLoading ? 'Обработка...' : 'Войти'}
+>>>>>>> 1e2002eb1a8988f749938c5ee6f70cd11200f3df
             </Button>
           </form>
         </CardContent>
         <CardFooter className="flex flex-col space-y-4">
           <div className="text-center text-xs text-muted-foreground">
+<<<<<<< HEAD
             Если у вас нет аккаунта, он будет создан автоматически при первом
             входе.
+=======
+            Если у вас нет аккаунта, он будет создан автоматически при первом входе.
+>>>>>>> 1e2002eb1a8988f749938c5ee6f70cd11200f3df
           </div>
         </CardFooter>
       </Card>
