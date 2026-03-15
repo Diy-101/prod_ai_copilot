@@ -1,18 +1,19 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { 
-  Send, 
-  Sparkles, 
-  User, 
-  Bot, 
-  RotateCcw, 
+import {
+  Send,
+  Sparkles,
+  User,
+  Bot,
+  RotateCcw,
   CheckCircle2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
-import { cn, generateUUID } from '@/lib/utils';
-import { generatePipeline } from '@/api/chat';
+import { cn } from '@/lib/utils';
+import { ENDPOINTS } from '@/constants/api';
+import { usePipelineContext } from '@/contexts/PipelineContext';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -27,16 +28,16 @@ interface SynthesisChatProps {
   initialDialogId?: string;
 }
 
-export const SynthesisChat: React.FC<SynthesisChatProps> = ({ 
-  onSynthesize, 
-  className, 
+export const SynthesisChat: React.FC<SynthesisChatProps> = ({
+  onSynthesize,
+  className,
   initialMessage,
-  initialDialogId 
+  initialDialogId
 }) => {
   const [messages, setMessages] = useState<Message[]>([
-    { 
-      role: 'assistant', 
-      content: 'Привет! Я помогу собрать Pipeline. Опишите бизнес-задачу, которую хотите автоматизировать.' 
+    {
+      role: 'assistant',
+      content: 'Привет! Я помогу собрать Pipeline. Опишите бизнес-задачу, которую хотите автоматизировать.'
     }
   ]);
   const [inputValue, setInputValue] = useState('');
@@ -56,56 +57,66 @@ export const SynthesisChat: React.FC<SynthesisChatProps> = ({
     }
   }, [initialMessage]);
 
+  const { setPipeline } = usePipelineContext();
+  const [isTyping, setIsTyping] = useState(false);
+
   const handleSend = async (overrideValue?: string) => {
     const valueToSend = overrideValue || inputValue;
-    if (!valueToSend.trim()) return;
+    if (!valueToSend.trim() || isTyping) return;
 
     const userMessage = valueToSend;
     setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
     setInputValue('');
+    setIsTyping(true);
 
-    // Pre-add assistant message with loading state
-    setMessages(prev => [...prev, { 
-      role: 'assistant', 
-      content: 'Анализирую возможности...',
-      isGenerating: true 
+    // Initial bot reaction
+    setMessages(prev => [...prev, {
+      role: 'assistant',
+      content: 'Анализирую возможности... Подбираю нужные Capabilities.',
+      isGenerating: true
     }]);
 
     try {
-      // Send message to generate pipeline endpoint
-      const response = await generatePipeline({
-        dialog_id: dialogId,
-        message: userMessage,
-        user_id: null,
-        capability_ids: null
+      const response = await fetch(ENDPOINTS.PIPELINES.GENERATE, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: userMessage }),
       });
 
-      setMessages(prev => {
-        const newMessages = [...prev];
-        const lastIndex = newMessages.length - 1;
-        newMessages[lastIndex] = { 
-          role: 'assistant', 
-          content: response.message_ru || (response.status === 'success' ? 'Я подготовил Pipeline для вашей задачи.' : 'Произошла ошибка при генерации.'),
-          isGenerating: false 
-        };
-        return newMessages;
-      });
+      if (response.ok) {
+        const data = await response.json();
 
-      if (response.status === 'success' && onSynthesize) {
-        onSynthesize(userMessage);
+        // Update Pipeline Global State
+        if (data.status === 'ready') {
+          setPipeline(data);
+        }
+
+        setMessages(prev => {
+          const newMessages = [...prev];
+          const lastIndex = newMessages.length - 1;
+          newMessages[lastIndex] = {
+            role: 'assistant',
+            content: data.chat_reply_ru || 'Пайплайн успешно собран. Посмотрите на схему по центру.'
+          };
+          return newMessages;
+        });
+
+        if (onSynthesize) onSynthesize(userMessage);
+      } else {
+        throw new Error('Failed to generate pipeline');
       }
     } catch (error) {
-      console.error('Error in chat:', error);
       setMessages(prev => {
         const newMessages = [...prev];
         const lastIndex = newMessages.length - 1;
-        newMessages[lastIndex] = { 
-          role: 'assistant', 
-          content: 'К сожалению, произошла ошибка сетевого соединения. Попробуйте еще раз.',
-          isGenerating: false 
+        newMessages[lastIndex] = {
+          role: 'assistant',
+          content: 'К сожалению, произошла ошибка при сборке пайплайна. Попробуйте перефразировать запрос.'
         };
         return newMessages;
       });
+    } finally {
+      setIsTyping(false);
     }
   };
 
@@ -136,8 +147,8 @@ export const SynthesisChat: React.FC<SynthesisChatProps> = ({
               </div>
               <div className={cn(
                 "p-3 rounded-2xl text-sm leading-relaxed shadow-sm border",
-                msg.role === 'assistant' 
-                  ? "bg-card border-border text-foreground" 
+                msg.role === 'assistant'
+                  ? "bg-card border-border text-foreground"
                   : "bg-primary text-primary-foreground border-primary"
               )}>
                 {msg.content}
@@ -157,24 +168,24 @@ export const SynthesisChat: React.FC<SynthesisChatProps> = ({
       <div className="p-4 border-t border-border space-y-3">
         {messages.length > 2 && (
           <div className="flex gap-2 mb-2">
-             <Button variant="outline" size="sm" className="h-7 text-[10px] gap-1 border-border">
-               <RotateCcw className="h-3 w-3" /> Пересобрать
-             </Button>
-             <Button variant="outline" size="sm" className="h-7 text-[10px] gap-1 border-border text-primary">
-               <CheckCircle2 className="h-3 w-3" /> Подтвердить
-             </Button>
+            <Button variant="outline" size="sm" className="h-7 text-[10px] gap-1 border-border">
+              <RotateCcw className="h-3 w-3" /> Пересобрать
+            </Button>
+            <Button variant="outline" size="sm" className="h-7 text-[10px] gap-1 border-border text-primary">
+              <CheckCircle2 className="h-3 w-3" /> Подтвердить
+            </Button>
           </div>
         )}
         <div className="relative">
-          <Input 
-            placeholder="Опишите задачу..." 
+          <Input
+            placeholder="Опишите задачу..."
             className="pr-12 bg-background border-border h-11"
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSend()}
           />
-          <Button 
-            size="sm" 
+          <Button
+            size="sm"
             className="absolute right-1 top-1 h-9 w-9 p-0 bg-primary hover:bg-primary/90"
             onClick={() => handleSend()}
           >

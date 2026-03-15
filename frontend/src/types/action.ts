@@ -18,6 +18,16 @@ export interface Action {
   tag?: string;
 }
 
+export interface Capability {
+  id: string;
+  action_id: string;
+  name: string;
+  description: string;
+  actionsCount?: number;
+  status?: string;
+  aiTag?: string;
+}
+
 export interface IngestResponse {
   created_count: number;
   actions: Action[];
@@ -27,4 +37,5 @@ export interface IngestResponse {
     path?: string;
     error: string;
   }>;
+  capabilities?: Capability[];
 }
