@@ -36,6 +36,13 @@ BEGIN
     CREATE INDEX IF NOT EXISTS ix_actions_is_deleted ON actions (is_deleted);
     CREATE INDEX IF NOT EXISTS ix_actions_ingest_status ON actions (ingest_status);
   END IF;
+  IF to_regclass('public.capabilities') IS NOT NULL THEN
+    ALTER TABLE capabilities ADD COLUMN IF NOT EXISTS type VARCHAR(50) DEFAULT 'ATOMIC';
+    ALTER TABLE capabilities ADD COLUMN IF NOT EXISTS recipe JSONB;
+    ALTER TABLE capabilities ALTER COLUMN action_id DROP NOT NULL;
+    
+    CREATE INDEX IF NOT EXISTS ix_capabilities_type ON capabilities (type);
+  END IF;
 END $$;
 """
             )
