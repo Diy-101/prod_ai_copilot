@@ -13,43 +13,40 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { ActionProvider } from "@/contexts/ActionContext";
 import { PipelineProvider } from "@/contexts/PipelineContext";
 import { Layout } from "@/components/layout/Layout";
+import { ProtectedRoute } from "@/components/shared/ProtectedRoute";
 import Actions from "./pages/Actions";
 import Home from "./pages/Home";
 import Capabilities from "./pages/Capabilities";
 import Pipelines from "./pages/Pipelines";
 import NotFound from "./pages/NotFound";
+import Login from "./pages/Login";
+import Register from "./pages/Register";
 
 /**
  * QueryClient instance for managing server state
- * Handles caching, background updates, and data synchronization
  */
 const queryClient = new QueryClient();
 
 /**
  * AppRoutes component
  * 
- * Defines the routing structure for the application using React Router.
- * All routes are nested under the Layout component which provides
- * consistent navigation and sidebar.
- * 
- * @returns JSX.Element - The routing configuration
+ * Defines the routing structure for the application.
  */
 const AppRoutes = () => {
   return (
     <Routes>
-      {/* Main layout wrapper for all authenticated pages */}
-      <Route path="/" element={<Layout />}>
-        {/* Home page as the initial screen */}
-        <Route index element={<Home />} />
+      {/* Public Routes */}
+      <Route path="/login" element={<Login />} />
+      <Route path="/register" element={<Register />} />
 
-        {/* Actions - Technical API methods */}
-        <Route path="actions" element={<Actions />} />
-
-        {/* Capabilities - Business logic skills */}
-        <Route path="capabilities" element={<Capabilities />} />
-
-        {/* Pipelines - Visual workflow editor */}
-        <Route path="pipelines" element={<Pipelines />} />
+      {/* Protected Main Application Routes */}
+      <Route element={<ProtectedRoute />}>
+        <Route path="/" element={<Layout />}>
+          <Route index element={<Home />} />
+          <Route path="actions" element={<Actions />} />
+          <Route path="capabilities" element={<Capabilities />} />
+          <Route path="pipelines" element={<Pipelines />} />
+        </Route>
       </Route>
 
       {/* 404 page for unmatched routes */}
