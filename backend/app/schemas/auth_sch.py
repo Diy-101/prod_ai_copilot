@@ -1,17 +1,19 @@
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, EmailStr, Field
+
 
 class RegisterIn(BaseModel):
     email: EmailStr = Field(max_length=254)
-    password: str = Field(min_length=8, max_length=72)
-    full_name: str = Field(min_length=2, max_length=200, alias="fullName")
+    password: str = Field(min_length=1, max_length=72)
+    full_name: str = Field(
+        min_length=2,
+        max_length=200,
+        validation_alias=AliasChoices("full_name", "fullName"),
+        serialization_alias="fullName",
+    )
 
-    @field_validator("password")
-    @classmethod
-    def validate_password_complexity(cls, v: str) -> str:
-        if not any(c.isalpha() for c in v) or not any(c.isdigit() for c in v):
-            raise ValueError("must contain at least one letter and one digit")
-        return v
+    model_config = ConfigDict(populate_by_name=True)
+
 
 class LoginIn(BaseModel):
     email: EmailStr = Field(max_length=254)
-    password: str = Field(min_length=8, max_length=72)
+    password: str = Field(min_length=1, max_length=72)

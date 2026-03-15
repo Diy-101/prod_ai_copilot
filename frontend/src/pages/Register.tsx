@@ -37,27 +37,14 @@ const Register: React.FC = () => {
     }
 
     if (password.length < 8) {
-<<<<<<< HEAD
       toast.error("Пароль должен быть не менее 8 символов");
-      return;
-    }
-
-    if (password.length < 8) {
-      toast.error("Пароль должен быть не менее 8 символов");
-=======
-      toast.error('Пароль должен быть не менее 8 символов');
->>>>>>> 1e2002eb1a8988f749938c5ee6f70cd11200f3df
       return;
     }
 
     const hasLetter = /[a-zA-Z]/.test(password);
     const hasNumber = /\d/.test(password);
     if (!hasLetter || !hasNumber) {
-<<<<<<< HEAD
       toast.error("Пароль должен содержать хотя бы одну букву и одну цифру");
-=======
-      toast.error('Пароль должен содержать хотя бы одну букву и одну цифру');
->>>>>>> 1e2002eb1a8988f749938c5ee6f70cd11200f3df
       return;
     }
 
