@@ -13,6 +13,8 @@ services:
     environment:
       - DATABASE_URL=postgresql+asyncpg://user:password@db:5432/dbname
       - REDIS_URL=redis://redis:6379/0
+      - OLLAMA_HOST=http://host.docker.internal:8067
+      - OLLAMA_MODEL=qwen2.5:7b
     depends_on:
       db:
         condition: service_healthy
