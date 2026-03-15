@@ -62,7 +62,8 @@ class PipelineService:
                 capability_ids=capability_ids
             )
             selected_capabilities = [
-                SelectedCapability(capability=c, score=1.0) for c in capabilities
+                SelectedCapability(capability=c, score=1.0, confidence_tier="high")
+                for c in capabilities
             ]
         else:
             selection_query = self._build_selection_query(
@@ -86,6 +87,21 @@ class PipelineService:
                 ),
                 "nodes": [],
                 "edges": [],
+                "missing_requirements": ["selection:no_matches"],
+                "context_summary": dialog_summary,
+            }
+
+        if self._selection_is_low_confidence(selected_capabilities):
+            question = self._build_low_confidence_question_ru()
+            await self.dialog_memory.append_and_summarize(str(dialog_id), "user", message)
+            await self.dialog_memory.append_and_summarize(str(dialog_id), "assistant", question)
+            return {
+                "status": "needs_input",
+                "message_ru": "Нужно уточнение цели, чтобы собрать корректный сценарий.",
+                "chat_reply_ru": question,
+                "nodes": [],
+                "edges": [],
+                "missing_requirements": ["selection:low_confidence"],
                 "context_summary": dialog_summary,
             }
         prompt = self._build_generation_prompt(
@@ -107,7 +123,7 @@ class PipelineService:
                 "context_summary": dialog_summary,
             }
 
-        normalized_nodes, normalized_edges = self._normalize_workflow(
+        normalized_nodes, normalized_edges, normalization_issues = self._normalize_workflow(
             raw_graph, selected_capabilities
         )
         normalized_nodes, normalized_edges = self._review_graph_with_llm(
@@ -128,6 +144,9 @@ class PipelineService:
         is_ready, missing = self._validate_ready_graph(
             normalized_nodes, normalized_edges
         )
+        if normalization_issues:
+            missing = sorted(set(missing + normalization_issues))
+            is_ready = False
         chat_reply = self._build_chat_reply_ru(normalized_nodes, normalized_edges)
 
         if not is_ready:
@@ -270,10 +289,16 @@ class PipelineService:
             '      "step": 1,\n'
             '      "name": "Step name",\n'
             '      "capability_id": "UUID from CAPABILITIES",\n'
-            "      ...\n"
+            '      "description": "Step purpose",\n'
+            '      "input_connected_from": [],\n'
+            '      "output_connected_to": [],\n'
+            '      "input_data_type_from_previous": [],\n'
+            '      "external_inputs": []\n'
             "    }\n"
             "  ],\n"
-            '  "variable_injections": []\n'
+            '  "edges": [\n'
+            '    {"from_step": 1, "to_step": 2, "type": "field_name"}\n'
+            "  ]\n"
             "}\n\n"
             "SELF-CHECK (INTERNAL ONLY):\n"
             "- Сначала forward-путь, потом backward-валидация от последнего шага.\n"
@@ -299,15 +324,30 @@ class PipelineService:
         parts.extend(chunk for chunk in recent_chunks if chunk)
         return "\n".join(part for part in parts if part)
 
+    def _selection_is_low_confidence(
+        self, selected_capabilities: list[SelectedCapability]
+    ) -> bool:
+        if not selected_capabilities:
+            return False
+        return str(selected_capabilities[0].confidence_tier).lower() == "low"
+
+    def _build_low_confidence_question_ru(self) -> str:
+        return (
+            "Нужно уточнить цель, чтобы построить точный сценарий. "
+            "Какой финальный бизнес-результат нужен: сегмент, рассылка, "
+            "обновление CRM или отчёт?"
+        )
+
     def _normalize_workflow(
         self,
         raw_graph: dict[str, Any],
         selected_capabilities: list[SelectedCapability],
-    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[str]]:
         capabilities_by_id = {
             str(sc.capability.id): sc.capability for sc in selected_capabilities
         }
         capabilities = [sc.capability for sc in selected_capabilities]
+        issues: list[str] = []
 
         raw_nodes = raw_graph.get("nodes") if isinstance(raw_graph, dict) else None
         if not isinstance(raw_nodes, list):
@@ -336,6 +376,8 @@ class PipelineService:
                 capabilities=capabilities,
                 capabilities_by_id=capabilities_by_id,
             )
+            if capability_id_raw is not None and cap is None:
+                issues.append("graph:invalid_capability_ref")
 
             if cap is None:
                 endpoints_payload = []
@@ -406,7 +448,7 @@ class PipelineService:
                 }
             )
 
-        return normalized_nodes, normalized_edges
+        return normalized_nodes, normalized_edges, sorted(set(issues))
 
     def _review_graph_with_llm(
         self,
@@ -538,81 +580,41 @@ class PipelineService:
                 if str(getattr(cap, "name", "")) == str(capability_id):
                     return cap
 
-        hints = [
-            str(raw_node.get("name") or ""),
-            str(raw_node.get("description") or ""),
-        ]
-        endpoints_raw = raw_node.get("endpoints")
-        if isinstance(endpoints_raw, list):
-            for endpoint in endpoints_raw:
-                if isinstance(endpoint, dict):
-                    hints.append(str(endpoint.get("name") or ""))
-
-        best_cap = None
-        best_score = 0.0
-        for cap in capabilities:
-            cap_name = str(getattr(cap, "name", "") or "")
-            cap_desc = str(getattr(cap, "description", "") or "")
-            score = self._best_hint_score(hints, cap_name, cap_desc)
-            if score > best_score:
-                best_score = score
-                best_cap = cap
-
-        if best_cap is not None and best_score >= 0.55:
-            return best_cap
-
+        # Strict mode: no fuzzy mapping to avoid accidental capability substitutions.
         return None
-
-    def _best_hint_score(self, hints: list[str], cap_name: str, cap_desc: str) -> float:
-        cap_name_tokens = self._tokenize_text(cap_name)
-        cap_desc_tokens = self._tokenize_text(cap_desc)
-        if not cap_name_tokens and not cap_desc_tokens:
-            return 0.0
-
-        best = 0.0
-        for hint in hints:
-            hint_tokens = self._tokenize_text(hint)
-            if not hint_tokens:
-                continue
-            overlap_name = len(hint_tokens & cap_name_tokens) / max(len(hint_tokens), 1)
-            overlap_desc = len(hint_tokens & cap_desc_tokens) / max(len(hint_tokens), 1)
-            score = max(overlap_name, overlap_desc)
-            if hint_tokens and hint_tokens == cap_name_tokens:
-                score = max(score, 1.0)
-            best = max(best, score)
-
-        return best
 
     def _repair_edges_with_data_flow(
         self,
         nodes: list[dict[str, Any]],
         edges: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:
-        existing = {(e["from_step"], e["to_step"], e["type"]) for e in edges}
-        node_by_step = {n["step"]: n for n in nodes if isinstance(n.get("step"), int)}
-
-        def add_edge(from_step: int, to_step: int, edge_type: str) -> None:
-            if (from_step, to_step, edge_type) in existing:
-                return
-            if self._edge_creates_cycle(edges, from_step, to_step):
-                return
-            edges.append(
-                {"from_step": from_step, "to_step": to_step, "type": edge_type}
-            )
-            existing.add((from_step, to_step, edge_type))
-
-        for from_step, from_node in node_by_step.items():
-            output_type = self._extract_primary_type(from_node, "output_type")
-            if not output_type:
+        known_steps = {
+            step for node in nodes if isinstance((step := node.get("step")), int)
+        }
+        sanitized: list[dict[str, Any]] = []
+        seen: set[tuple[int, int, str]] = set()
+        for edge in edges:
+            src = edge.get("from_step")
+            dst = edge.get("to_step")
+            edge_type = edge.get("type")
+            if not isinstance(src, int) or not isinstance(dst, int):
                 continue
-            for to_step, to_node in node_by_step.items():
-                if from_step == to_step:
-                    continue
-                input_type = self._extract_primary_type(to_node, "input_type")
-                if output_type == input_type:
-                    add_edge(from_step, to_step, output_type)
-
-        return edges
+            if src not in known_steps or dst not in known_steps or src == dst:
+                continue
+            if not isinstance(edge_type, str) or not edge_type.strip():
+                continue
+            key = (src, dst, edge_type.strip())
+            if key in seen:
+                continue
+            seen.add(key)
+            sanitized.append(
+                {
+                    "from_step": src,
+                    "to_step": dst,
+                    "type": edge_type.strip(),
+                }
+            )
+        return sanitized
 
     def _prune_edges_for_terminal_goal(
         self,
@@ -625,16 +627,21 @@ class PipelineService:
         if not known_steps:
             return edges
 
-        terminal_step = max(known_steps)
+        out_degree: dict[int, int] = {step: 0 for step in known_steps}
         reverse_adjacency: dict[int, set[int]] = {}
         for edge in edges:
             src = edge.get("from_step")
             dst = edge.get("to_step")
             if isinstance(src, int) and isinstance(dst, int):
+                out_degree[src] = out_degree.get(src, 0) + 1
                 reverse_adjacency.setdefault(dst, set()).add(src)
 
+        sink_steps = [step for step in known_steps if out_degree.get(step, 0) == 0]
+        if not sink_steps:
+            return []
+
         reachable: set[int] = set()
-        stack: list[int] = [terminal_step]
+        stack: list[int] = list(sink_steps)
         while stack:
             current = stack.pop()
             if current in reachable:
@@ -657,6 +664,7 @@ class PipelineService:
         edges: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:
         required_by_step: dict[int, set[str]] = {}
+        explicit_by_step: dict[int, set[str]] = {}
         for node in nodes:
             step = node.get("step")
             if not isinstance(step, int):
@@ -664,6 +672,15 @@ class PipelineService:
             required_inputs = self._extract_required_inputs_from_node(node)
             if required_inputs:
                 required_by_step[step] = set(required_inputs)
+            explicit_types = {
+                edge_ref.get("type")
+                for edge_ref in self._normalize_input_data_types(
+                    node.get("input_data_type_from_previous")
+                )
+                if isinstance(edge_ref.get("type"), str)
+            }
+            if explicit_types:
+                explicit_by_step[step] = explicit_types
 
         filtered: list[dict[str, Any]] = []
         for edge in edges:
@@ -671,11 +688,11 @@ class PipelineService:
             edge_type = edge.get("type")
             if not isinstance(to_step, int):
                 continue
-            required_inputs = required_by_step.get(to_step)
-            if required_inputs is None:
-                filtered.append(edge)
+            if not isinstance(edge_type, str):
                 continue
-            if isinstance(edge_type, str) and edge_type in required_inputs:
+            required_inputs = required_by_step.get(to_step, set())
+            explicit_types = explicit_by_step.get(to_step, set())
+            if edge_type in required_inputs or edge_type in explicit_types:
                 filtered.append(edge)
         return filtered
 
@@ -867,9 +884,13 @@ class PipelineService:
             reverse_adjacency[dst].add(src)
 
         if len(valid_steps) > 1 and valid_edges:
-            terminal_step = max(valid_steps)
+            sink_steps = [
+                step for step in valid_steps if len(expected_outputs.get(step, set())) == 0
+            ]
+            if len(sink_steps) > 1:
+                issues.append("graph:ambiguous_terminal")
             reachable_to_terminal: set[int] = set()
-            stack: list[int] = [terminal_step]
+            stack: list[int] = list(sink_steps)
             while stack:
                 current = stack.pop()
                 if current in reachable_to_terminal:

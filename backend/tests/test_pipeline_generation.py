@@ -238,3 +238,152 @@ def test_review_graph_prompt_uses_capabilities_context(monkeypatch):
 
     assert "CAPABILITIES:" in captured["user_prompt"]
     assert capability.name in captured["user_prompt"]
+
+
+def test_generate_returns_needs_input_on_low_confidence_selection():
+    service = _build_service()
+    capability = _build_capability()
+    selected = [
+        SelectedCapability(capability=capability, score=0.2, confidence_tier="low")
+    ]
+
+    service.dialog_memory.get_context = AsyncMock(return_value=([], "ctx summary"))
+    service.dialog_memory.append_and_summarize = AsyncMock()
+    service.semantic_selector.select_capabilities = AsyncMock(return_value=selected)
+    service.generate_raw_graph = lambda *_: (_ for _ in ()).throw(
+        AssertionError("generate_raw_graph must not be called on low confidence")
+    )
+
+    result = asyncio.run(
+        service.generate(
+            dialog_id=uuid4(),
+            message="Собери CRM-сценарий для кампании и сегментации",
+            user_id=uuid4(),
+        )
+    )
+
+    assert result["status"] == "needs_input"
+    assert "сегмент" in result["chat_reply_ru"].lower()
+    assert "selection:low_confidence" in result["missing_requirements"]
+
+
+def test_normalize_workflow_marks_invalid_capability_reference():
+    service = _build_service()
+    capability = _build_capability()
+    selected = [SelectedCapability(capability=capability, score=1.0)]
+    unknown_capability_id = str(uuid4())
+
+    nodes, edges, issues = service._normalize_workflow(
+        {
+            "nodes": [
+                {
+                    "step": 1,
+                    "name": "Unknown capability node",
+                    "capability_id": unknown_capability_id,
+                }
+            ],
+            "edges": [],
+        },
+        selected,
+    )
+
+    assert len(nodes) == 1
+    assert edges == []
+    assert nodes[0]["endpoints"] == []
+    assert "graph:invalid_capability_ref" in issues
+
+
+def test_repair_edges_with_data_flow_does_not_autolink_object_types():
+    service = _build_service()
+    nodes = [
+        {"step": 1, "endpoints": [{"output_type": {"type": "object"}}]},
+        {"step": 2, "endpoints": [{"input_type": {"type": "object"}}]},
+    ]
+    repaired = service._repair_edges_with_data_flow(nodes, [])
+    assert repaired == []
+
+
+def test_prune_edges_for_terminal_goal_keeps_all_sink_branches():
+    service = _build_service()
+    nodes = [{"step": 1}, {"step": 2}, {"step": 3}]
+    edges = [
+        {"from_step": 1, "to_step": 2, "type": "audience"},
+        {"from_step": 1, "to_step": 3, "type": "report"},
+    ]
+
+    pruned = service._prune_edges_for_terminal_goal(nodes, edges)
+
+    assert pruned == edges
+
+
+def test_prune_edges_by_required_inputs_allows_explicit_input_type_reference():
+    service = _build_service()
+    nodes = [
+        {"step": 1, "endpoints": [{"output_type": {"type": "object"}}]},
+        {"step": 2, "endpoints": [{"output_type": {"type": "object"}}]},
+        {
+            "step": 3,
+            "input_data_type_from_previous": [{"from_step": 1, "type": "audience"}],
+            "endpoints": [{"input_type": {"type": "object", "required": []}}],
+        },
+    ]
+    edges = [
+        {"from_step": 1, "to_step": 3, "type": "audience"},
+        {"from_step": 2, "to_step": 3, "type": "hotels"},
+    ]
+
+    pruned = service._prune_edges_by_required_inputs(nodes, edges)
+
+    assert pruned == [{"from_step": 1, "to_step": 3, "type": "audience"}]
+
+
+def test_collect_graph_structure_issues_reports_ambiguous_terminal():
+    service = _build_service()
+    nodes = [{"step": 1}, {"step": 2}, {"step": 3}]
+    edges = [
+        {"from_step": 1, "to_step": 2, "type": "audience"},
+        {"from_step": 1, "to_step": 3, "type": "report"},
+    ]
+
+    issues = service._collect_graph_structure_issues(nodes, edges)
+
+    assert "graph:ambiguous_terminal" in issues
+
+
+def test_crm_prompt_regression_prefers_needs_input_over_cannot_build():
+    service = _build_service()
+    capability = _build_capability()
+    selected = [
+        SelectedCapability(capability=capability, score=0.2, confidence_tier="low")
+    ]
+
+    service.dialog_memory.get_context = AsyncMock(return_value=([], "ctx summary"))
+    service.dialog_memory.append_and_summarize = AsyncMock()
+    service.semantic_selector.select_capabilities = AsyncMock(return_value=selected)
+
+    prompts = [
+        "Сегментируй лидов для кампании",
+        "Сделай рассылку по новой аудитории",
+        "Обнови CRM после кампании",
+        "Построй отчёт по ретеншну",
+        "Сегмент и пуш для новых клиентов",
+        "Запусти маркетинговую кампанию по лидам",
+        "Нужен отчёт по конверсии по сегментам",
+        "Сделай CRM обновление по результату рассылки",
+        "Аудитория для оффера и отчёт по продажам",
+        "Ретеншн сценарий по лидам и email",
+    ]
+
+    statuses = []
+    for prompt in prompts:
+        result = asyncio.run(
+            service.generate(
+                dialog_id=uuid4(),
+                message=prompt,
+                user_id=uuid4(),
+            )
+        )
+        statuses.append(result["status"])
+
+    assert statuses.count("needs_input") == len(prompts)
+    assert "cannot_build" not in statuses
