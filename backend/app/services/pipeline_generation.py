@@ -68,6 +68,7 @@ class PipelineGenerationService:
         )
 
         try:
+            # LLM call happens here (prompt -> raw JSON graph)
             raw_graph = self.generate_raw_graph(message, selected_capabilities, prompt)
         except PipelineGenerationError as exc:
             return {
@@ -136,7 +137,9 @@ class PipelineGenerationService:
             "You are an assistant that generates pipeline graphs. "
             "Return ONLY valid JSON without markdown or comments."
         )
+        # Reset model state to avoid cross-request contamination
         reset_model_session()
+        # Execute LLM request and expect strict JSON payload
         payload = chat_json(system_prompt=system_prompt, user_prompt=prompt)
         if not isinstance(payload, dict):
             raise PipelineGenerationError("Failed to call Ollama")
@@ -150,6 +153,7 @@ class PipelineGenerationService:
         dialog_messages: list[dict[str, Any]],
         dialog_summary: str | None,
     ) -> str:
+        # Build compact capabilities list for LLM consumption
         capabilities_payload = []
         for sc in selected_capabilities:
             cap = sc.capability
@@ -171,6 +175,7 @@ class PipelineGenerationService:
             "recent_messages": dialog_messages[-6:],
         }
 
+        # LLM instruction: strict JSON response and DAG rules
         instruction = (
             "Сгенерируй граф сценария для запроса пользователя. "
             "Ответь ТОЛЬКО валидным JSON без текста и markdown. "
