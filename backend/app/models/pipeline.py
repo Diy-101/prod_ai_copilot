@@ -77,3 +77,72 @@ class Pipeline(TimestampMixin, Base):
     )
 
     creator = relationship("User", lazy="select")
+    all_nodes = relationship("PipelineNode", back_populates="pipeline", cascade="all, delete-orphan", lazy="selectin")
+
+
+class PipelineNode(TimestampMixin, Base):
+    """
+    Технический слой ноды пайплайна.
+    Хранит информацию об одном шаге (Capability) внутри конкретного Pipeline.
+    """
+    __tablename__ = "pipeline_nodes"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+
+    pipeline_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("pipelines.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    step: Mapped[int] = mapped_column(
+        nullable=False,
+        comment="Порядковый номер шага в графе",
+    )
+
+    name: Mapped[str] = mapped_column(
+        String(512),
+        nullable=False,
+        comment="Название ноды",
+    )
+
+    description: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+    )
+
+    # Храним технические детали (связи, эндпоинты) в JSON, чтобы не раздувать схему
+    input_config: Mapped[dict[str, Any]] = mapped_column(
+        JSON,
+        nullable=False,
+        default=dict,
+        comment="Входящие связи и типы данных",
+    )
+
+    output_config: Mapped[dict[str, Any]] = mapped_column(
+        JSON,
+        nullable=False,
+        default=dict,
+        comment="Исходящие связи",
+    )
+
+    endpoints: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSON,
+        nullable=False,
+        default=list,
+        comment="Список эндпоинтов (Capability), входящих в эту ноду",
+    )
+
+    external_inputs: Mapped[list[str]] = mapped_column(
+        JSON,
+        nullable=False,
+        default=list,
+        comment="Параметры, которые нужно запросить у пользователя",
+    )
+
+    pipeline = relationship("Pipeline", back_populates="all_nodes")
