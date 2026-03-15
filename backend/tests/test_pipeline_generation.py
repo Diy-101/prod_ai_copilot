@@ -264,7 +264,9 @@ def test_generate_returns_needs_input_on_low_confidence_selection():
     )
 
     assert result["status"] == "needs_input"
-    assert "сегмент" in result["chat_reply_ru"].lower()
+    assert isinstance(result["chat_reply_ru"], str)
+    assert len(result["chat_reply_ru"].strip()) > 8
+    assert "уточнение" not in result["chat_reply_ru"].lower()
     assert "selection:low_confidence" in result["missing_requirements"]
 
 
@@ -274,6 +276,7 @@ def test_second_clarification_question_mentions_missing_required_inputs():
     selected = [
         SelectedCapability(capability=capability, score=0.2, confidence_tier="low")
     ]
+    service._generate_clarification_question_ru = lambda **_: None
 
     question = service._build_low_confidence_question_ru(
         question_number=2,
@@ -282,7 +285,7 @@ def test_second_clarification_question_mentions_missing_required_inputs():
         selected_capabilities=selected,
     )
 
-    assert "уточнение 2/2" in question.lower()
+    assert "уточнение" not in question.lower()
     assert "token" in question.lower()
 
 
@@ -335,8 +338,8 @@ def test_low_confidence_attempts_1_2_then_build_on_3rd():
         assert result["status"] == "needs_input"
         assert graph_called["value"] is False
 
-    assert "уточнение 1/2" in responses[0]["chat_reply_ru"].lower()
-    assert "уточнение 2/2" in responses[1]["chat_reply_ru"].lower()
+    assert "уточнение" not in responses[0]["chat_reply_ru"].lower()
+    assert "уточнение" not in responses[1]["chat_reply_ru"].lower()
 
     result = asyncio.run(
         service.generate(

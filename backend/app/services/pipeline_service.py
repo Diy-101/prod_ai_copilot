@@ -21,6 +21,7 @@ class PipelineServiceError(Exception):
 class PipelineService:
     LOW_CONFIDENCE_MAX_QUESTIONS = 2
     LOW_CONFIDENCE_QUESTION_MARKER = "нужно уточнить цель, чтобы построить точный сценарий"
+    LOW_CONFIDENCE_DIALOG_MARKER = "[[low_confidence_question]]"
 
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
@@ -144,8 +145,11 @@ class PipelineService:
                 dialog_messages=dialog_messages,
                 selected_capabilities=selected_capabilities,
             )
+            dialog_question = self._attach_low_confidence_marker(question)
             await self.dialog_memory.append_and_summarize(str(dialog_id), "user", message)
-            await self.dialog_memory.append_and_summarize(str(dialog_id), "assistant", question)
+            await self.dialog_memory.append_and_summarize(
+                str(dialog_id), "assistant", dialog_question
+            )
             return {
                 "status": "needs_input",
                 "message_ru": "Нужно уточнение цели, чтобы собрать корректный сценарий.",
@@ -438,7 +442,7 @@ class PipelineService:
         ]
         parts = [str(message or "").strip()]
         if dialog_summary:
-            parts.append(dialog_summary)
+            parts.append(self._strip_low_confidence_marker(dialog_summary))
         parts.extend(chunk for chunk in recent_chunks if chunk)
         return "\n".join(part for part in parts if part)
 
@@ -457,17 +461,22 @@ class PipelineService:
         dialog_messages: list[dict[str, Any]] | None = None,
         selected_capabilities: list[SelectedCapability] | None = None,
     ) -> str:
-        prefix = f"Уточнение {max(1, min(question_number, self.LOW_CONFIDENCE_MAX_QUESTIONS))}/{self.LOW_CONFIDENCE_MAX_QUESTIONS}: "
+        llm_question = self._generate_clarification_question_ru(
+            question_number=question_number,
+            message=message,
+            dialog_messages=dialog_messages or [],
+            selected_capabilities=selected_capabilities or [],
+        )
+        if llm_question:
+            return llm_question
+
         outcome_question = (
             "Нужно уточнить цель, чтобы построить точный сценарий. "
             "Какой финальный бизнес-результат нужен: сегмент, рассылка, "
             "обновление CRM или отчёт?"
         )
-        if question_number <= 1:
-            return prefix + outcome_question
-
-        if not selected_capabilities:
-            return prefix + outcome_question
+        if question_number <= 1 or not selected_capabilities:
+            return outcome_question
 
         context_tokens = self._collect_user_context_tokens(
             message=message,
@@ -480,16 +489,109 @@ class PipelineService:
         )
         if not missing_inputs:
             return (
-                prefix
-                + "Нужно уточнить входные ограничения для точного графа. "
-                + "Укажите: кого выбираем, по каким фильтрам, и какие поля обязательны в результате."
+                "Нужно уточнить входные ограничения для точного графа. "
+                "Укажите: кого выбираем, по каким фильтрам, и какие поля обязательны в результате."
             )
 
         humanized_inputs = ", ".join(self._humanize_input_name(name) for name in missing_inputs)
         return (
-            f"{prefix}Нужно уточнить цель, чтобы построить точный сценарий. "
+            "Нужно уточнить цель, чтобы построить точный сценарий. "
             f"Чтобы собрать исполнимый граф, уточните входные данные: {humanized_inputs}."
         )
+
+    def _generate_clarification_question_ru(
+        self,
+        *,
+        question_number: int,
+        message: str,
+        dialog_messages: list[dict[str, Any]],
+        selected_capabilities: list[SelectedCapability],
+    ) -> str | None:
+        if not selected_capabilities:
+            return None
+
+        user_messages = [
+            str(item.get("content", ""))
+            for item in dialog_messages[-8:]
+            if isinstance(item, dict)
+            and str(item.get("role", "")).lower() == "user"
+        ]
+        previous_questions = [
+            self._strip_low_confidence_marker(str(item.get("content", "")))
+            for item in dialog_messages[-8:]
+            if isinstance(item, dict)
+            and str(item.get("role", "")).lower() == "assistant"
+            and self._is_low_confidence_question(str(item.get("content", "")))
+        ]
+
+        context_tokens = self._collect_user_context_tokens(
+            message=message,
+            dialog_messages=dialog_messages,
+        )
+        missing_inputs = self._collect_missing_required_inputs(
+            selected_capabilities=selected_capabilities,
+            context_tokens=context_tokens,
+            limit=5,
+        )
+
+        capabilities_payload = []
+        for item in selected_capabilities[:5]:
+            cap = item.capability
+            capabilities_payload.append(
+                {
+                    "name": str(getattr(cap, "name", "") or ""),
+                    "description": str(getattr(cap, "description", "") or ""),
+                    "required_inputs": self._extract_required_inputs(
+                        getattr(cap, "input_schema", None)
+                    ),
+                }
+            )
+
+        prompt_payload = {
+            "stage": question_number,
+            "max_questions": self.LOW_CONFIDENCE_MAX_QUESTIONS,
+            "current_user_message": message,
+            "recent_user_messages": user_messages[-4:],
+            "previous_clarification_questions": previous_questions[-2:],
+            "candidate_capabilities": capabilities_payload,
+            "missing_required_inputs": missing_inputs,
+        }
+
+        system_prompt = (
+            "Ты продуктовый ассистент, который задаёт один уточняющий вопрос на русском "
+            "для построения исполнимого pipeline. "
+            "Верни только JSON формата {\"question_ru\": \"...\"}. "
+            "Не используй префиксы вроде 'Уточнение 1/2'. "
+            "Не перечисляй много пунктов: один конкретный вопрос."
+        )
+        user_prompt = (
+            "Сгенерируй один следующий вопрос для пользователя на основе контекста.\n"
+            "Правила:\n"
+            "- Если stage=1: спроси про финальный бизнес-результат и критерий успеха.\n"
+            "- Если stage=2: спроси про самый важный недостающий вход/ограничение для исполнения.\n"
+            "- Вопрос должен быть конкретным и связанным с candidate_capabilities.\n"
+            "- Верни только JSON.\n\n"
+            f"CONTEXT:\n{json.dumps(prompt_payload, ensure_ascii=False)}"
+        )
+
+        try:
+            payload = chat_json(system_prompt=system_prompt, user_prompt=user_prompt)
+        except Exception:
+            return None
+        if not isinstance(payload, dict):
+            return None
+
+        question = payload.get("question_ru")
+        if not isinstance(question, str):
+            return None
+        normalized = " ".join(question.strip().split())
+        normalized = self._strip_low_confidence_marker(normalized)
+        normalized = normalized.replace("Уточнение 1/2:", "").replace("Уточнение 2/2:", "").strip()
+        if len(normalized) < 12:
+            return None
+        if not normalized.endswith("?"):
+            normalized = f"{normalized}?"
+        return normalized
 
     def _count_low_confidence_questions(
         self,
@@ -516,9 +618,16 @@ class PipelineService:
     def _is_low_confidence_question(self, content: str) -> bool:
         content = content.strip().lower()
         return (
-            content.startswith("уточнение ")
+            self.LOW_CONFIDENCE_DIALOG_MARKER in content
             or self.LOW_CONFIDENCE_QUESTION_MARKER in content
+            or "какой финальный бизнес-результат нужен" in content
         )
+
+    def _attach_low_confidence_marker(self, question: str) -> str:
+        return f"{question}\n{self.LOW_CONFIDENCE_DIALOG_MARKER}"
+
+    def _strip_low_confidence_marker(self, content: str) -> str:
+        return content.replace(self.LOW_CONFIDENCE_DIALOG_MARKER, "").strip()
 
     def _collect_user_context_tokens(
         self,
