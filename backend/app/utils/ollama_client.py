@@ -32,6 +32,23 @@ def chat_json(system_prompt: str, user_prompt: str) -> dict[str, Any] | None:
     return _call_ollama_json(system_prompt=system_prompt, user_prompt=user_prompt)
 
 
+def reset_model_session() -> None:
+    host = os.getenv("OLLAMA_HOST", "http://158.160.90.60:8067").strip()
+    model = os.getenv("OLLAMA_MODEL", "qwen2.5:7b")
+    headers = _load_headers()
+
+    try:
+        from ollama import Client
+    except Exception:
+        return None
+
+    try:
+        client = Client(host=host, headers=headers or None)
+        _reset_model_session(client=client, model=model)
+    except Exception:
+        return None
+
+
 async def summarize_dialog_text(messages: list[dict[str, Any]]) -> str | None:
     prompt = (
         "Кратко сожми историю диалога на русском. "
