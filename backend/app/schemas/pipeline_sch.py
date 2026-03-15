@@ -7,8 +7,10 @@ from pydantic import BaseModel, Field
 
 
 class PipelineGenerateRequest(BaseModel):
-    user_query: str = Field(..., min_length=1)
+    message: str = Field(..., min_length=1)
     dialog_id: UUID | None = None
+    user_id: UUID | None = None
+    capability_ids: list[UUID] | None = None
 
 
 class PipelineGenerateResponse(BaseModel):

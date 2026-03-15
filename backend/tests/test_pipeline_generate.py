@@ -61,7 +61,7 @@ async def test_generate_pipeline_graph_success(monkeypatch):
     app.dependency_overrides[get_session] = override_session
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-            response = await ac.post("/api/v1/pipelines/generate", json={"user_query": "find paid orders"})
+            response = await ac.post("/api/v1/pipelines/generate", json={"message": "find paid orders"})
     finally:
         app.dependency_overrides.clear()
 
@@ -92,7 +92,7 @@ async def test_generate_pipeline_graph_returns_404_when_no_capabilities(monkeypa
     app.dependency_overrides[get_session] = override_session
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-            response = await ac.post("/api/v1/pipelines/generate", json={"user_query": "unknown domain query"})
+            response = await ac.post("/api/v1/pipelines/generate", json={"message": "unknown domain query"})
     finally:
         app.dependency_overrides.clear()
 
@@ -135,7 +135,7 @@ async def test_generate_pipeline_graph_returns_502_on_llm_error(monkeypatch):
     app.dependency_overrides[get_session] = override_session
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-            response = await ac.post("/api/v1/pipelines/generate", json={"user_query": "send alert"})
+            response = await ac.post("/api/v1/pipelines/generate", json={"message": "send alert"})
     finally:
         app.dependency_overrides.clear()
 
@@ -148,5 +148,5 @@ async def test_generate_pipeline_graph_returns_502_on_llm_error(monkeypatch):
 @pytest.mark.asyncio
 async def test_generate_pipeline_graph_returns_422_on_blank_query():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-        response = await ac.post("/api/v1/pipelines/generate", json={"user_query": "   "})
+        response = await ac.post("/api/v1/pipelines/generate", json={"message": "   "})
     assert response.status_code == 422
