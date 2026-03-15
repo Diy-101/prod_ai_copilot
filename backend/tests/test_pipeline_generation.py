@@ -66,7 +66,7 @@ def test_generate_raw_graph_raises_on_invalid_payload(monkeypatch):
         service.generate_raw_graph("build pipeline", selected, "prompt")
 
 
-def test_generate_returns_cannot_build_when_graph_generation_fails():
+def test_generate_llm_failure_falls_back_to_minimal_ready_pipeline():
     service = _build_service()
     capability = _build_capability()
 
@@ -88,9 +88,10 @@ def test_generate_returns_cannot_build_when_graph_generation_fails():
         )
     )
 
-    assert result["status"] == "cannot_build"
-    assert result["message_ru"] == "mocked failure"
-    assert result["nodes"] == []
+    assert result["status"] == "ready"
+    assert len(result["nodes"]) == 1
+    assert result["nodes"][0]["endpoints"][0]["capability_id"] == str(capability.id)
+    assert result["nodes"][0]["endpoints"][0]["action_id"] == str(capability.action_id)
     assert result["edges"] == []
     assert result["context_summary"] == "ctx summary"
 
@@ -267,22 +268,23 @@ def test_generate_returns_needs_input_on_low_confidence_selection():
     assert "selection:low_confidence" in result["missing_requirements"]
 
 
-def test_generate_after_clarification_does_not_loop_on_low_confidence():
+def test_low_confidence_attempts_1_2_3_then_build_on_4th():
     service = _build_service()
     capability = _build_capability()
     selected = [
         SelectedCapability(capability=capability, score=0.2, confidence_tier="low")
     ]
-    asked_question = service._build_low_confidence_question_ru()
     graph_called = {"value": False}
+    dialog_messages: list[dict[str, str]] = []
 
-    service.dialog_memory.get_context = AsyncMock(
-        return_value=(
-            [{"role": "assistant", "content": asked_question}],
-            "ctx summary",
-        )
-    )
-    service.dialog_memory.append_and_summarize = AsyncMock()
+    async def fake_get_context(_dialog_id):
+        return list(dialog_messages), "ctx summary"
+
+    async def fake_append_and_summarize(_dialog_id, role, content):
+        dialog_messages.append({"role": role, "content": content})
+
+    service.dialog_memory.get_context = fake_get_context
+    service.dialog_memory.append_and_summarize = fake_append_and_summarize
     service.semantic_selector.select_capabilities = AsyncMock(return_value=selected)
 
     def fake_generate_raw_graph(*_args, **_kwargs):
@@ -300,38 +302,47 @@ def test_generate_after_clarification_does_not_loop_on_low_confidence():
 
     service.generate_raw_graph = fake_generate_raw_graph
 
+    dialog_id = uuid4()
+    user_id = uuid4()
+    for _ in range(3):
+        result = asyncio.run(
+            service.generate(
+                dialog_id=dialog_id,
+                message="Собери CRM-сценарий",
+                user_id=user_id,
+            )
+        )
+        assert result["status"] == "needs_input"
+        assert graph_called["value"] is False
+
     result = asyncio.run(
         service.generate(
-            dialog_id=uuid4(),
-            message="Нужен финальный результат: сегмент для email-рассылки",
-            user_id=uuid4(),
+            dialog_id=dialog_id,
+            message="Собери CRM-сценарий",
+            user_id=user_id,
         )
     )
-
     assert graph_called["value"] is True
     assert result["status"] != "needs_input"
 
 
-def test_generate_short_explicit_outcome_bypasses_low_confidence_question():
+def test_generate_invalid_graph_falls_back_to_minimal_ready_pipeline():
     service = _build_service()
     capability = _build_capability()
-    selected = [
-        SelectedCapability(capability=capability, score=0.2, confidence_tier="low")
-    ]
-    graph_called = {"value": False}
-
     service.dialog_memory.get_context = AsyncMock(return_value=([], "ctx summary"))
     service.dialog_memory.append_and_summarize = AsyncMock()
-    service.semantic_selector.select_capabilities = AsyncMock(return_value=selected)
+    service.semantic_selector.select_capabilities = AsyncMock(
+        return_value=[SelectedCapability(capability=capability, score=1.0, confidence_tier="high")]
+    )
 
     def fake_generate_raw_graph(*_args, **_kwargs):
-        graph_called["value"] = True
+        # Non-executable raw graph: unresolved capability reference.
         return {
             "nodes": [
                 {
                     "step": 1,
-                    "name": "Fetch users",
-                    "capability_id": str(capability.id),
+                    "name": "Broken step",
+                    "capability_id": str(uuid4()),
                 }
             ],
             "edges": [],
@@ -342,13 +353,54 @@ def test_generate_short_explicit_outcome_bypasses_low_confidence_question():
     result = asyncio.run(
         service.generate(
             dialog_id=uuid4(),
-            message="Сегмент",
+            message="Собери что-нибудь",
             user_id=uuid4(),
         )
     )
 
-    assert graph_called["value"] is True
-    assert result["status"] != "needs_input"
+    assert result["status"] == "ready"
+    assert len(result["nodes"]) == 1
+    assert result["nodes"][0]["endpoints"][0]["capability_id"] == str(capability.id)
+    assert result["nodes"][0]["endpoints"][0]["action_id"] == str(capability.action_id)
+
+
+def test_no_capabilities_returns_needs_input_with_import_instruction():
+    service = _build_service()
+    service.dialog_memory.get_context = AsyncMock(return_value=([], "ctx summary"))
+    service.dialog_memory.append_and_summarize = AsyncMock()
+    service.semantic_selector.select_capabilities = AsyncMock(return_value=[])
+
+    result = asyncio.run(
+        service.generate(
+            dialog_id=uuid4(),
+            message="Собери pipeline",
+            user_id=uuid4(),
+        )
+    )
+
+    assert result["status"] == "needs_input"
+    assert "openapi/swagger" in result["chat_reply_ru"].lower()
+    assert "selection:no_matches" in result["missing_requirements"]
+
+
+def test_user_scope_enforced_for_semantic_selection():
+    service = _build_service()
+    service.dialog_memory.get_context = AsyncMock(return_value=([], "ctx summary"))
+    service.dialog_memory.append_and_summarize = AsyncMock()
+    service.semantic_selector.select_capabilities = AsyncMock(return_value=[])
+
+    user_id = uuid4()
+    asyncio.run(
+        service.generate(
+            dialog_id=uuid4(),
+            message="Собери pipeline",
+            user_id=user_id,
+        )
+    )
+
+    assert service.semantic_selector.select_capabilities.await_count == 1
+    call_args = service.semantic_selector.select_capabilities.await_args
+    assert call_args.kwargs["owner_user_id"] == user_id
 
 
 def test_normalize_workflow_marks_invalid_capability_reference():

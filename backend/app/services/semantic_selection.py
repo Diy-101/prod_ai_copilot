@@ -164,16 +164,6 @@ class SemanticSelectionService:
         query = query.limit(200)
         result = await session.execute(query)
         capabilities = list(result.scalars().all())
-        if owner_user_id is not None and not capabilities:
-            # Compatibility fallback for older/global capabilities created without an owner.
-            fallback_query = (
-                select(Capability)
-                .where(Capability.user_id.is_(None))
-                .order_by(Capability.created_at.asc())
-                .limit(200)
-            )
-            fallback_result = await session.execute(fallback_query)
-            capabilities = list(fallback_result.scalars().all())
 
         executable_capabilities = [
             capability
@@ -200,7 +190,7 @@ class SemanticSelectionService:
                     SelectedCapability(
                         capability=capability,
                         score=0.01,
-                        confidence_tier="medium",
+                        confidence_tier="low",
                     )
                     for capability in candidates[:limit]
                 ]

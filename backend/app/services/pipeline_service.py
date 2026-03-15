@@ -19,6 +19,8 @@ class PipelineServiceError(Exception):
 
 
 class PipelineService:
+    LOW_CONFIDENCE_MAX_QUESTIONS = 3
+
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
         self.capability_service = CapabilityService(session)
@@ -119,10 +121,10 @@ class PipelineService:
         if not selected_capabilities:
             return {
                 "status": "needs_input",
-                "message_ru": "Не удалось найти подходящих инструментов. Добавьте OpenAPI/Swagger.",
+                "message_ru": "Не удалось найти доступные инструменты. Загрузите OpenAPI/Swagger.",
                 "chat_reply_ru": (
-                    "Не нашёл релевантных инструментов под этот запрос. "
-                    "Уточните задачу или загрузите подходящую OpenAPI/Swagger спецификацию."
+                    "Для вашего аккаунта пока нет capabilities. "
+                    "Загрузите OpenAPI/Swagger, чтобы я смог собрать исполнимый pipeline."
                 ),
                 "nodes": [],
                 "edges": [],
@@ -130,11 +132,10 @@ class PipelineService:
                 "context_summary": dialog_summary,
             }
 
-        if self._selection_is_low_confidence(
-            selected_capabilities
-        ) and self._should_request_low_confidence_clarification(
-            dialog_messages=dialog_messages,
-            user_message=message,
+        low_confidence_attempts = self._count_low_confidence_questions(dialog_messages)
+        if (
+            self._selection_is_low_confidence(selected_capabilities)
+            and low_confidence_attempts < self.LOW_CONFIDENCE_MAX_QUESTIONS
         ):
             question = self._build_low_confidence_question_ru()
             await self.dialog_memory.append_and_summarize(str(dialog_id), "user", message)
@@ -148,6 +149,7 @@ class PipelineService:
                 "missing_requirements": ["selection:low_confidence"],
                 "context_summary": dialog_summary,
             }
+
         prompt = self._build_generation_prompt(
             user_query=message,
             selected_capabilities=selected_capabilities,
@@ -157,86 +159,41 @@ class PipelineService:
             previous_edges=previous_edges,
         )
 
-        used_minimal_fallback = False
         try:
             raw_graph = self.generate_raw_graph(message, selected_capabilities, prompt)
-        except PipelineServiceError as exc:
-            raw_graph = (
-                self._build_minimal_raw_graph(selected_capabilities)
-                if capability_ids is None
-                else None
-            )
+        except Exception:
+            raw_graph = self._build_minimal_raw_graph(selected_capabilities)
             if raw_graph is None:
                 return {
                     "status": "cannot_build",
-                    "message_ru": str(exc),
+                    "message_ru": "Не удалось построить сценарий. Нет доступной исполнимой capability.",
                     "chat_reply_ru": "Не удалось построить сценарий. Попробуйте уточнить запрос.",
                     "nodes": [],
                     "edges": [],
                     "context_summary": dialog_summary,
                 }
-            used_minimal_fallback = True
 
-        normalized_nodes, normalized_edges, normalization_issues = self._normalize_workflow(
-            raw_graph, selected_capabilities
+        normalized_nodes, normalized_edges, is_ready, missing = self._prepare_graph(
+            raw_graph=raw_graph,
+            selected_capabilities=selected_capabilities,
         )
-        normalized_nodes, normalized_edges = self._review_graph_with_llm(
-            normalized_nodes, normalized_edges, selected_capabilities
-        )
-        normalized_edges = self._repair_edges_with_data_flow(
-            normalized_nodes, normalized_edges
-        )
-        normalized_edges = self._prune_edges_for_terminal_goal(
-            normalized_nodes, normalized_edges
-        )
-        normalized_edges = self._prune_edges_by_required_inputs(
-            normalized_nodes, normalized_edges
-        )
-        self._sync_node_connections(normalized_nodes, normalized_edges)
-        self._ensure_external_inputs(normalized_nodes, normalized_edges)
-
-        is_ready, missing = self._validate_ready_graph(
-            normalized_nodes, normalized_edges
-        )
-        if normalization_issues:
-            missing = sorted(set(missing + normalization_issues))
-            is_ready = False
         chat_reply = self._build_chat_reply_ru(normalized_nodes, normalized_edges)
 
-        if (
-            not is_ready
-            and not used_minimal_fallback
-            and capability_ids is None
-        ):
+        if not is_ready:
             fallback_raw_graph = self._build_minimal_raw_graph(selected_capabilities)
             if fallback_raw_graph is not None:
-                fallback_nodes, fallback_edges, fallback_issues = self._normalize_workflow(
-                    fallback_raw_graph,
-                    selected_capabilities,
+                fallback_nodes, fallback_edges, fallback_ready, fallback_missing = self._prepare_graph(
+                    raw_graph=fallback_raw_graph,
+                    selected_capabilities=selected_capabilities,
                 )
-                fallback_edges = self._repair_edges_with_data_flow(
-                    fallback_nodes, fallback_edges
-                )
-                fallback_edges = self._prune_edges_for_terminal_goal(
-                    fallback_nodes, fallback_edges
-                )
-                fallback_edges = self._prune_edges_by_required_inputs(
-                    fallback_nodes, fallback_edges
-                )
-                self._sync_node_connections(fallback_nodes, fallback_edges)
-                self._ensure_external_inputs(fallback_nodes, fallback_edges)
-                fallback_ready, fallback_missing = self._validate_ready_graph(
-                    fallback_nodes, fallback_edges
-                )
-                if fallback_issues:
-                    fallback_missing = sorted(set(fallback_missing + fallback_issues))
-                    fallback_ready = False
                 if fallback_ready:
                     normalized_nodes = fallback_nodes
                     normalized_edges = fallback_edges
-                    missing = []
                     is_ready = True
+                    missing = []
                     chat_reply = self._build_chat_reply_ru(normalized_nodes, normalized_edges)
+                else:
+                    missing = fallback_missing
 
         if not is_ready:
             await self.dialog_memory.append_and_summarize(
@@ -294,6 +251,23 @@ class PipelineService:
             "edges": normalized_edges,
             "context_summary": dialog_summary,
         }
+
+    def _prepare_graph(
+        self,
+        *,
+        raw_graph: dict[str, Any],
+        selected_capabilities: list[SelectedCapability],
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], bool, list[str]]:
+        normalized_nodes, normalized_edges, normalization_issues = self._normalize_workflow(
+            raw_graph, selected_capabilities
+        )
+        self._sync_node_connections(normalized_nodes, normalized_edges)
+        self._ensure_external_inputs(normalized_nodes, normalized_edges)
+        is_ready, missing = self._validate_ready_graph(normalized_nodes, normalized_edges)
+        if normalization_issues:
+            missing = sorted(set(missing + normalization_issues))
+            is_ready = False
+        return normalized_nodes, normalized_edges, is_ready, missing
 
     def _build_minimal_raw_graph(
         self,
@@ -476,50 +450,21 @@ class PipelineService:
             "обновление CRM или отчёт?"
         )
 
-    def _should_request_low_confidence_clarification(
+    def _count_low_confidence_questions(
         self,
         dialog_messages: list[dict[str, Any]],
-        user_message: str,
-    ) -> bool:
-        # Ask clarifying question only once per dialog to avoid loops:
-        # after the first clarification attempt, proceed to graph generation.
+    ) -> int:
         marker = "какой финальный бизнес-результат нужен"
-        for item in reversed(dialog_messages):
+        count = 0
+        for item in dialog_messages:
             if not isinstance(item, dict):
                 continue
-            role = str(item.get("role", "")).lower()
-            if role != "assistant":
+            if str(item.get("role", "")).lower() != "assistant":
                 continue
             content = str(item.get("content", "")).lower()
             if marker in content:
-                return False
-
-        if self._is_short_outcome_reply(user_message):
-            return False
-
-        return True
-
-    def _is_short_outcome_reply(self, message: str) -> bool:
-        normalized = str(message or "").strip().lower()
-        if not normalized:
-            return False
-
-        words = re.findall(r"[a-zA-Zа-яА-Я0-9]+", normalized)
-        if len(words) == 0 or len(words) > 2:
-            return False
-
-        outcome_markers = {
-            "сегмент",
-            "сегменты",
-            "рассыл",
-            "обновлен",
-            "crm",
-            "отч",
-            "segment",
-            "newsletter",
-            "report",
-        }
-        return any(marker in normalized for marker in outcome_markers)
+                count += 1
+        return count
 
     def _normalize_workflow(
         self,
