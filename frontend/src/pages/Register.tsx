@@ -29,6 +29,7 @@ const Register: React.FC = () => {
       return;
     }
 
+<<<<<<< HEAD
     if (password.length < 8) {
       toast.error('Пароль должен быть не менее 8 символов');
       return;
@@ -38,6 +39,10 @@ const Register: React.FC = () => {
     const hasNumber = /\d/.test(password);
     if (!hasLetter || !hasNumber) {
       toast.error('Пароль должен содержать хотя бы одну букву и одну цифру');
+=======
+    if (password.length < 6) {
+      toast.error('Пароль должен быть не менее 6 символов');
+>>>>>>> 1152825 (add auth)
       return;
     }
 
