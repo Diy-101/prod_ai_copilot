@@ -4,15 +4,22 @@ import { SynthesisChat } from '@/components/shared/SynthesisChat';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Play, Settings, Database, Activity, Zap, Box, Server } from 'lucide-react';
+import { Activity, Play, Sparkles } from 'lucide-react';
 import { usePipelineContext } from '@/contexts/PipelineContext';
-import { cn } from '@/lib/utils';
 import { PipelineData, PipelineEdge, PipelineNode } from '@/types/pipeline';
+import { cn } from '@/lib/utils';
 
 type PositionedNode = {
   node: PipelineNode;
   x: number;
   y: number;
+};
+
+type DrawableEdge = {
+  edge: PipelineEdge;
+  path: string;
+  labelX: number;
+  labelY: number;
 };
 
 const CARD_WIDTH = 256;
@@ -23,302 +30,276 @@ const PADDING_X = 48;
 const PADDING_Y = 32;
 
 const buildGraphLayout = (pipeline: PipelineData) => {
-  const nodesByStep = new Map<number, PipelineNode>();
-  for (const node of pipeline.nodes) {
-    nodesByStep.set(node.step, node);
-  }
-
-  const incomingCount = new Map<number, number>();
+  const nodeByStep = new Map<number, PipelineNode>();
+  const incoming = new Map<number, number>();
   const outgoing = new Map<number, number[]>();
 
-  for (const node of pipeline.nodes) {
-    incomingCount.set(node.step, 0);
+  pipeline.nodes.forEach((node) => {
+    nodeByStep.set(node.step, node);
+    incoming.set(node.step, 0);
     outgoing.set(node.step, []);
-  }
+  });
 
-  for (const edge of pipeline.edges) {
-    if (!nodesByStep.has(edge.from_step) || !nodesByStep.has(edge.to_step)) {
-      continue;
+  pipeline.edges.forEach((edge) => {
+    if (!nodeByStep.has(edge.from_step) || !nodeByStep.has(edge.to_step)) {
+      return;
     }
-    incomingCount.set(edge.to_step, (incomingCount.get(edge.to_step) || 0) + 1);
     outgoing.get(edge.from_step)?.push(edge.to_step);
-  }
+    incoming.set(edge.to_step, (incoming.get(edge.to_step) || 0) + 1);
+  });
 
-  const queue: number[] = [];
+  const roots = pipeline.nodes
+    .filter((node) => (incoming.get(node.step) || 0) === 0)
+    .sort((left, right) => left.step - right.step);
   const levels = new Map<number, number>();
-  for (const node of pipeline.nodes) {
-    if ((incomingCount.get(node.step) || 0) === 0) {
-      queue.push(node.step);
-      levels.set(node.step, 0);
-    }
-  }
+  const queue = [...roots];
 
-  if (queue.length === 0) {
-    for (const node of pipeline.nodes) {
-      queue.push(node.step);
-      levels.set(node.step, 0);
-    }
-  }
+  roots.forEach((node) => levels.set(node.step, 0));
 
   while (queue.length > 0) {
-    const step = queue.shift()!;
-    const currentLevel = levels.get(step) || 0;
-    for (const nextStep of outgoing.get(step) || []) {
-      const nextLevel = currentLevel + 1;
-      if (!levels.has(nextStep) || nextLevel > (levels.get(nextStep) || 0)) {
-        levels.set(nextStep, nextLevel);
-      }
-      incomingCount.set(nextStep, (incomingCount.get(nextStep) || 0) - 1);
-      if ((incomingCount.get(nextStep) || 0) <= 0) {
-        queue.push(nextStep);
-      }
+    const current = queue.shift();
+    if (!current) {
+      continue;
     }
+    const currentLevel = levels.get(current.step) || 0;
+    const children = outgoing.get(current.step) || [];
+    children.forEach((childStep) => {
+      const nextLevel = currentLevel + 1;
+      const previousLevel = levels.get(childStep);
+      if (previousLevel === undefined || nextLevel > previousLevel) {
+        levels.set(childStep, nextLevel);
+      }
+      const childNode = nodeByStep.get(childStep);
+      if (childNode) {
+        queue.push(childNode);
+      }
+    });
   }
 
-  for (const node of pipeline.nodes) {
+  pipeline.nodes.forEach((node) => {
     if (!levels.has(node.step)) {
       levels.set(node.step, 0);
     }
-  }
+  });
 
-  const columns = new Map<number, PipelineNode[]>();
-  for (const node of pipeline.nodes) {
+  const nodesByLevel = new Map<number, PipelineNode[]>();
+  pipeline.nodes.forEach((node) => {
     const level = levels.get(node.step) || 0;
-    const columnNodes = columns.get(level) || [];
-    columnNodes.push(node);
-    columns.set(level, columnNodes);
-  }
+    const bucket = nodesByLevel.get(level) || [];
+    bucket.push(node);
+    nodesByLevel.set(level, bucket);
+  });
 
-  const sortedLevels = Array.from(columns.keys()).sort((a, b) => a - b);
-  for (const level of sortedLevels) {
-    columns.get(level)?.sort((a, b) => a.step - b.step);
-  }
+  const levelEntries = [...nodesByLevel.entries()].sort((left, right) => left[0] - right[0]);
+  levelEntries.forEach(([, nodes]) => nodes.sort((left, right) => left.step - right.step));
 
   const positionedNodes: PositionedNode[] = [];
-  let maxRows = 0;
-  for (const level of sortedLevels) {
-    const columnNodes = columns.get(level) || [];
-    maxRows = Math.max(maxRows, columnNodes.length);
-    columnNodes.forEach((node, rowIndex) => {
+  levelEntries.forEach(([level, nodes]) => {
+    nodes.forEach((node, rowIndex) => {
       positionedNodes.push({
         node,
         x: PADDING_X + level * (CARD_WIDTH + COLUMN_GAP),
         y: PADDING_Y + rowIndex * (CARD_HEIGHT + ROW_GAP),
       });
     });
-  }
+  });
 
-  const positionedByStep = new Map<number, PositionedNode>();
-  for (const positionedNode of positionedNodes) {
-    positionedByStep.set(positionedNode.node.step, positionedNode);
-  }
+  const positionByStep = new Map<number, PositionedNode>();
+  positionedNodes.forEach((positionedNode) => {
+    positionByStep.set(positionedNode.node.step, positionedNode);
+  });
 
-  const drawableEdges = pipeline.edges
+  const drawableEdges: DrawableEdge[] = pipeline.edges
     .map((edge) => {
-      const fromNode = positionedByStep.get(edge.from_step);
-      const toNode = positionedByStep.get(edge.to_step);
-      if (!fromNode || !toNode) {
+      const from = positionByStep.get(edge.from_step);
+      const to = positionByStep.get(edge.to_step);
+      if (!from || !to) {
         return null;
       }
+
+      const startX = from.x + CARD_WIDTH;
+      const startY = from.y + CARD_HEIGHT / 2;
+      const endX = to.x;
+      const endY = to.y + CARD_HEIGHT / 2;
+      const controlOffset = Math.max(48, (endX - startX) / 2);
+      const path = [
+        `M ${startX} ${startY}`,
+        `C ${startX + controlOffset} ${startY}, ${endX - controlOffset} ${endY}, ${endX} ${endY}`,
+      ].join(' ');
+
       return {
         edge,
-        fromX: fromNode.x + CARD_WIDTH,
-        fromY: fromNode.y + CARD_HEIGHT / 2,
-        toX: toNode.x,
-        toY: toNode.y + CARD_HEIGHT / 2,
+        path,
+        labelX: startX + (endX - startX) / 2,
+        labelY: startY + (endY - startY) / 2 - 12,
       };
     })
-    .filter(Boolean) as Array<{
-      edge: PipelineEdge;
-      fromX: number;
-      fromY: number;
-      toX: number;
-      toY: number;
-    }>;
+    .filter((edge): edge is DrawableEdge => edge !== null);
 
-  const width = PADDING_X * 2 + sortedLevels.length * CARD_WIDTH + Math.max(0, sortedLevels.length - 1) * COLUMN_GAP;
-  const height = PADDING_Y * 2 + Math.max(maxRows, 1) * CARD_HEIGHT + Math.max(0, maxRows - 1) * ROW_GAP;
+  const maxLevel = Math.max(...levelEntries.map(([level]) => level), 0);
+  const maxRows = Math.max(...levelEntries.map(([, nodes]) => nodes.length), 1);
 
   return {
     positionedNodes,
     drawableEdges,
-    width,
-    height,
+    width: PADDING_X * 2 + (maxLevel + 1) * CARD_WIDTH + maxLevel * COLUMN_GAP,
+    height: PADDING_Y * 2 + maxRows * CARD_HEIGHT + Math.max(0, maxRows - 1) * ROW_GAP,
   };
 };
 
 export const Pipelines: React.FC = () => {
   const location = useLocation();
+  const { currentPipeline } = usePipelineContext();
   const initialMessage = location.state?.initialMessage;
   const dialogId = location.state?.dialogId;
-  const { currentPipeline } = usePipelineContext();
-  const graphLayout = currentPipeline ? buildGraphLayout(currentPipeline) : null;
-
-  const getNodeIcon = (index: number) => {
-    switch (index % 5) {
-      case 0: return <Zap className="h-5 w-5" />;
-      case 1: return <Settings className="h-5 w-5" />;
-      case 2: return <Database className="h-5 w-5" />;
-      case 3: return <Server className="h-5 w-5" />;
-      case 4: return <Activity className="h-5 w-5" />;
-      default: return <Box className="h-5 w-5" />;
-    }
-  };
-
-  const getNodeColor = (index: number) => {
-    const colors = [
-      'text-primary bg-primary/10',
-      'text-blue-500 bg-blue-500/10',
-      'text-purple-500 bg-purple-500/10',
-      'text-orange-500 bg-orange-500/10',
-      'text-green-500 bg-green-500/10',
-    ];
-    return colors[index % colors.length];
-  };
+  const graphLayout = currentPipeline && currentPipeline.nodes.length > 0
+    ? buildGraphLayout(currentPipeline)
+    : null;
 
   return (
     <div className="h-full flex overflow-hidden">
       {/* Main Pipeline Zone - Center */}
       <div className="flex-1 relative bg-muted/5 bg-grid-pattern p-8 overflow-auto">
-        <div className="max-w-6xl mx-auto space-y-12 py-10">
-          <div className="flex flex-col items-center mb-12 text-center">
-            <h1 className="text-3xl font-bold text-foreground mb-2">Editor Pipeline</h1>
-            {currentPipeline ? (
-               <div className="flex flex-col items-center">
-                 <p className="text-sm text-primary font-medium">Pipeline ID: {currentPipeline.pipeline_id}</p>
-                 <p className="text-xs text-muted-foreground mt-1 max-w-lg italic">"{currentPipeline.context_summary}"</p>
-               </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">Визуализация текущего процесса автоматизации</p>
-            )}
+        <div className="space-y-12 py-10 min-w-max">
+          <div className="flex flex-col items-center mb-12">
+            <h1 className="text-2xl font-bold text-foreground mb-2">Editor Pipeline</h1>
+            <p className="text-sm text-muted-foreground">Визуализация текущего процесса автоматизации</p>
           </div>
 
-          <div className="min-h-[300px] overflow-auto rounded-[28px] border border-border/40 bg-card/20 p-4">
-            {currentPipeline && graphLayout && currentPipeline.nodes.length > 0 ? (
-              <div
-                className="relative mx-auto"
-                style={{
-                  width: `${graphLayout.width}px`,
-                  height: `${graphLayout.height}px`,
-                  minWidth: `${graphLayout.width}px`,
-                }}
+          {graphLayout && currentPipeline ? (
+            <div
+              className="relative mx-auto"
+              style={{
+                width: graphLayout.width,
+                height: graphLayout.height,
+              }}
+            >
+              <svg
+                className="absolute inset-0 h-full w-full"
+                viewBox={`0 0 ${graphLayout.width} ${graphLayout.height}`}
+                fill="none"
               >
-                <svg
-                  className="absolute inset-0 h-full w-full overflow-visible"
-                  viewBox={`0 0 ${graphLayout.width} ${graphLayout.height}`}
-                  fill="none"
-                >
-                  <defs>
-                    <marker
-                      id="pipeline-arrow"
-                      markerWidth="10"
-                      markerHeight="10"
-                      refX="8"
-                      refY="5"
-                      orient="auto"
+                {graphLayout.drawableEdges.map(({ edge, path, labelX, labelY }) => (
+                  <g key={`${edge.from_step}-${edge.to_step}-${edge.type}`}>
+                    <path
+                      d={path}
+                      className="stroke-primary/50"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                    />
+                    <circle
+                      cx={labelX}
+                      cy={labelY + 12}
+                      r="4"
+                      className="fill-primary/80"
+                    />
+                    <text
+                      x={labelX}
+                      y={labelY}
+                      textAnchor="middle"
+                      className="fill-muted-foreground text-[11px]"
                     >
-                      <path d="M0 0L10 5L0 10Z" fill="currentColor" />
-                    </marker>
-                  </defs>
-                  {graphLayout.drawableEdges.map(({ edge, fromX, fromY, toX, toY }) => {
-                    const midX = fromX + (toX - fromX) / 2;
-                    const path = `M ${fromX} ${fromY} C ${midX} ${fromY}, ${midX} ${toY}, ${toX} ${toY}`;
-                    return (
-                      <g key={`${edge.from_step}-${edge.to_step}-${edge.type}`}>
-                        <path
-                          d={path}
-                          className="text-primary/35"
-                          stroke="currentColor"
-                          strokeWidth="3"
-                          strokeLinecap="round"
-                          markerEnd="url(#pipeline-arrow)"
-                        />
-                        <text
-                          x={midX}
-                          y={(fromY + toY) / 2 - 8}
-                          textAnchor="middle"
-                          className="fill-muted-foreground text-[10px] uppercase tracking-[0.18em]"
-                        >
-                          {edge.type}
-                        </text>
-                      </g>
-                    );
-                  })}
-                </svg>
+                      {edge.type}
+                    </text>
+                  </g>
+                ))}
+              </svg>
 
-                {graphLayout.positionedNodes.map(({ node, x, y }, index) => (
+              {graphLayout.positionedNodes.map(({ node, x, y }) => {
+                const endpoint = node.endpoints[0];
+                return (
                   <Card
                     key={node.step}
-                    className="absolute z-10 w-64 border-border hover:border-primary/40 bg-card/85 p-5 shadow-xl backdrop-blur-sm transition-all animate-in fade-in zoom-in duration-500"
-                    style={{ left: `${x}px`, top: `${y}px`, height: `${CARD_HEIGHT}px` }}
+                    className="absolute z-10 border-primary/20 bg-card/95 shadow-lg"
+                    style={{
+                      width: CARD_WIDTH,
+                      minHeight: CARD_HEIGHT,
+                      left: x,
+                      top: y,
+                    }}
                   >
-                    <div className="flex h-full flex-col items-center gap-3 text-center">
-                      <div className={cn("h-12 w-12 rounded-2xl flex items-center justify-center shadow-inner", getNodeColor(index))}>
-                        {getNodeIcon(index)}
+                    <div className="flex h-full flex-col gap-4 p-5">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-medium uppercase tracking-[0.18em] text-primary/70">
+                            Step {node.step}
+                          </p>
+                          <h3 className="mt-1 text-base font-semibold text-foreground">{node.name}</h3>
+                        </div>
+                        <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">
+                          API
+                        </Badge>
                       </div>
-                      <div>
-                        <p className="line-clamp-1 text-sm font-bold text-foreground">{node.name}</p>
-                        <p className="mt-1.5 line-clamp-3 text-[11px] leading-relaxed text-muted-foreground">
-                          {node.description}
-                        </p>
+
+                      <p className="text-sm leading-6 text-muted-foreground">
+                        {node.description || 'Описание шага не указано.'}
+                      </p>
+
+                      <div className="space-y-2 text-xs text-muted-foreground">
+                        <div>
+                          <span className="font-semibold text-foreground">Capability:</span>{' '}
+                          {endpoint?.name || 'Не определено'}
+                        </div>
+                        <div>
+                          <span className="font-semibold text-foreground">Inputs:</span>{' '}
+                          {node.input_connected_from.length > 0 ? `from ${node.input_connected_from.join(', ')}` : 'external'}
+                        </div>
+                        <div>
+                          <span className="font-semibold text-foreground">Outputs:</span>{' '}
+                          {node.output_connected_to.length > 0 ? node.output_connected_to.join(', ') : 'terminal'}
+                        </div>
                       </div>
-                      <div className="my-1 w-full h-px bg-border/50" />
-                      <div className="flex flex-wrap justify-center gap-1.5">
-                        {node.endpoints.map((ep, epIdx) => (
-                          <Badge
-                            key={epIdx}
-                            variant="secondary"
-                            className="border-transparent bg-muted/50 px-1.5 py-0 text-[9px] font-medium text-muted-foreground"
-                          >
-                            {ep.name}
-                          </Badge>
-                        ))}
-                      </div>
+
                       {node.external_inputs.length > 0 && (
-                        <div className="mt-auto flex flex-wrap items-center justify-center gap-1">
-                          <span className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">
-                            Inputs:
-                          </span>
-                          {node.external_inputs.map((input, idx) => (
-                            <Badge key={idx} className="border-primary/20 bg-primary/5 px-1.5 py-0 text-[9px] text-primary">
-                              {input}
+                        <div className="flex flex-wrap gap-2">
+                          {node.external_inputs.map((inputName) => (
+                            <Badge
+                              key={inputName}
+                              variant="outline"
+                              className={cn(
+                                "border-amber-500/30 bg-amber-500/10 text-amber-700"
+                              )}
+                            >
+                              {inputName}
                             </Badge>
                           ))}
                         </div>
                       )}
                     </div>
                   </Card>
-                ))}
+                );
+              })}
+            </div>
+          ) : (
+            <Card className="mx-auto flex max-w-2xl items-center gap-4 border-dashed border-primary/20 bg-card/70 p-8">
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                <Sparkles className="h-6 w-6" />
               </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center py-20 text-center opacity-40">
-                <Box className="h-20 w-20 mb-6 text-muted-foreground stroke-[1px]" />
-                <h2 className="text-xl font-semibold text-foreground">Пайплайн пуст</h2>
-                <p className="text-sm mt-2 max-w-xs">
-                  Опишите бизнес-задачу в Synthesis Chat справа, чтобы AI собрал последовательность шагов.
+              <div>
+                <p className="font-semibold text-foreground">Pipeline еще не построен</p>
+                <p className="text-sm text-muted-foreground">
+                  Отправьте сообщение в чат справа после импорта OpenAPI, и граф появится здесь.
                 </p>
               </div>
-            )}
-          </div>
-
-          {currentPipeline && (
-            <div className="max-w-xl mx-auto">
-              <Card className="mt-8 p-6 bg-primary/5 border-dashed border-primary/20 flex items-center justify-between shadow-lg animate-in fade-in slide-in-from-bottom-8 duration-700">
-                <div className="flex items-center gap-5">
-                  <div className="h-14 w-14 rounded-2xl bg-primary/10 flex items-center justify-center text-primary shadow-sm">
-                  <Play className="h-7 w-7 fill-primary/20" />
-                </div>
-                <div>
-                  <p className="font-bold text-lg text-foreground">Пайплайн готов к работе</p>
-                    <p className="text-sm text-muted-foreground">Все технические зависимости соблюдены</p>
-                  </div>
-                </div>
-                <Button size="lg" className="gap-2 px-8 shadow-primary/20 hover:shadow-primary/40 transition-shadow">
-                  <Play className="h-5 w-5" /> Запустить
-                </Button>
-              </Card>
-            </div>
+            </Card>
           )}
+
+          <Card className="mt-20 p-6 bg-primary/5 border-dashed border-primary/20 flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+                <Activity className="h-6 w-6" />
+              </div>
+              <div>
+                <p className="font-semibold text-foreground">Статус пайплайна</p>
+                <p className="text-sm text-muted-foreground">
+                  {currentPipeline?.message_ru || 'Все модули в режиме ожидания запуска'}
+                </p>
+              </div>
+            </div>
+            <Button className="gap-2" disabled={!currentPipeline?.pipeline_id}>
+              <Play className="h-4 w-4" /> Запустить поток
+            </Button>
+          </Card>
         </div>
       </div>
 

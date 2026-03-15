@@ -74,22 +74,23 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <AuthProvider>
       <TooltipProvider>
-        <PipelineProvider>
-          <ActionProvider>
+        <ActionProvider>
+          <PipelineProvider>
             {/* Toast notification system configuration */}
             <Toaster
               position="top-right"
-              theme="dark"
+              theme="light"
               duration={3500}
+              closeButton
               toastOptions={{
                 style: {
-                  background: '#18181b',
-                  color: '#fafafa',
+                  background: '#fff',
+                  color: '#222',
                   borderRadius: '10px',
-                  boxShadow: '0 4px 24px 0 rgba(0,0,0,0.30)',
+                  boxShadow: '0 4px 24px 0 rgba(0,0,0,0.10)',
                   fontSize: '1rem',
                   fontWeight: 500,
-                  border: '1px solid #27272a',
+                  border: '1px solid #e5e7eb',
                 },
               }}
             />
@@ -97,8 +98,8 @@ const App = () => (
             <BrowserRouter basename="/">
               <AppRoutes />
             </BrowserRouter>
-          </ActionProvider>
-        </PipelineProvider>
+          </PipelineProvider>
+        </ActionProvider>
       </TooltipProvider>
     </AuthProvider>
   </QueryClientProvider>

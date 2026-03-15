@@ -10,8 +10,8 @@ export interface PipelineNode {
     name: string;
     capability_id: string;
     action_id: string;
-    input_type: Record<string, string>;
-    output_type: string | Record<string, string>;
+    input_type: Record<string, string> | string | null;
+    output_type: string | Record<string, string> | null;
   }>;
 }
 
@@ -22,12 +22,12 @@ export interface PipelineEdge {
 }
 
 export interface PipelineData {
-  status: string;
+  status: 'ready' | 'success' | 'needs_input' | 'cannot_build';
   message_ru: string;
   chat_reply_ru: string;
-  pipeline_id: string;
+  pipeline_id: string | null;
   nodes: PipelineNode[];
   edges: PipelineEdge[];
-  missing_requirements: any[];
-  context_summary: string;
+  missing_requirements: string[];
+  context_summary: string | null;
 }

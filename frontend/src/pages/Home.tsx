@@ -7,6 +7,11 @@ import { ImportResultsModal } from '@/components/shared/ImportResultsModal';
 import { useNavigate } from 'react-router-dom';
 import { Action } from '@/types/action';
 import { useActionsContext } from '@/contexts/ActionContext';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { generateUUID } from '@/lib/utils';
 
 const Home: React.FC = () => {
@@ -24,7 +29,6 @@ const Home: React.FC = () => {
 
     const dialogId = generateUUID();
 
-    // Navigate to pipelines page with the message and dialog state
     navigate('/pipelines', {
       state: {
         initialMessage: chatMessage,
