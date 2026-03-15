@@ -1,5 +1,5 @@
-import { ENDPOINTS } from '@/constants/api';
-import { AuthResponse } from '@/types/auth';
+import { ENDPOINTS } from "@/constants/api";
+import { AuthResponse } from "@/types/auth";
 
 export interface LoginRequest {
   email: string;
@@ -8,7 +8,7 @@ export interface LoginRequest {
 
 export interface RegisterRequest {
   email: string;
-  full_name: string;
+  fullName: string;
   password: string;
 }
 
@@ -19,16 +19,16 @@ export interface RegisterRequest {
  */
 export const login = async (data: LoginRequest): Promise<AuthResponse> => {
   const response = await fetch(ENDPOINTS.AUTH.LOGIN, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
     },
     body: JSON.stringify(data),
   });
 
   if (!response.ok) {
     const errorData = await response.json();
-    throw new Error(errorData.detail?.message || 'Ошибка входа');
+    throw new Error(errorData.detail?.message || "Ошибка входа");
   }
 
   return response.json();
@@ -39,18 +39,20 @@ export const login = async (data: LoginRequest): Promise<AuthResponse> => {
  * @param data Registration data
  * @returns Auth response with user data and token
  */
-export const register = async (data: RegisterRequest): Promise<AuthResponse> => {
+export const register = async (
+  data: RegisterRequest,
+): Promise<AuthResponse> => {
   const response = await fetch(ENDPOINTS.AUTH.REGISTER, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
     },
     body: JSON.stringify(data),
   });
 
   if (!response.ok) {
     const errorData = await response.json();
-    throw new Error(errorData.detail?.message || 'Ошибка регистрации');
+    throw new Error(errorData.detail?.message || "Ошибка регистрации");
   }
 
   return response.json();

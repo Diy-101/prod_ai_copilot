@@ -1,18 +1,25 @@
-import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { useAuth } from '@/contexts/AuthContext';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { toast } from 'sonner';
-import { UserPlus, Loader2 } from 'lucide-react';
+import React, { useState } from "react";
+import { useNavigate, Link } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { toast } from "sonner";
+import { UserPlus, Loader2 } from "lucide-react";
 
 const Register: React.FC = () => {
-  const [email, setEmail] = useState('');
-  const [fullName, setFullName] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
+  const [email, setEmail] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const { register } = useAuth();
   const navigate = useNavigate();
@@ -20,27 +27,39 @@ const Register: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !fullName || !password || !confirmPassword) {
-      toast.error('Пожалуйста, заполните все поля');
+      toast.error("Пожалуйста, заполните все поля");
       return;
     }
 
     if (password !== confirmPassword) {
-      toast.error('Пароли не совпадают');
+      toast.error("Пароли не совпадают");
       return;
     }
 
-    if (password.length < 6) {
-      toast.error('Пароль должен быть не менее 6 символов');
+    if (password.length < 8) {
+      toast.error("Пароль должен быть не менее 8 символов");
+      return;
+    }
+
+    if (password.length < 8) {
+      toast.error("Пароль должен быть не менее 8 символов");
+      return;
+    }
+
+    const hasLetter = /[a-zA-Z]/.test(password);
+    const hasNumber = /\d/.test(password);
+    if (!hasLetter || !hasNumber) {
+      toast.error("Пароль должен содержать хотя бы одну букву и одну цифру");
       return;
     }
 
     setIsLoading(true);
     try {
       await register(email, fullName, password);
-      toast.success('Аккаунт успешно создан!');
-      navigate('/');
+      toast.success("Аккаунт успешно создан!");
+      navigate("/");
     } catch (error: any) {
-      toast.error(error.message || 'Ошибка регистрации');
+      toast.error(error.message || "Ошибка регистрации");
     } finally {
       setIsLoading(false);
     }
@@ -52,7 +71,9 @@ const Register: React.FC = () => {
         <CardHeader className="space-y-1 text-center">
           <div className="flex justify-center mb-4">
             <div className="w-12 h-12 bg-primary rounded-xl flex items-center justify-center shadow-lg shadow-primary/20">
-              <span className="text-primary-foreground font-bold text-xl">Ai</span>
+              <span className="text-primary-foreground font-bold text-xl">
+                Ai
+              </span>
             </div>
           </div>
           <CardTitle className="text-2xl font-bold">Регистрация</CardTitle>
@@ -122,14 +143,17 @@ const Register: React.FC = () => {
               ) : (
                 <UserPlus className="h-4 w-4" />
               )}
-              {isLoading ? 'Создание...' : 'Зарегистрироваться'}
+              {isLoading ? "Создание..." : "Зарегистрироваться"}
             </Button>
           </form>
         </CardContent>
         <CardFooter className="flex flex-col space-y-4">
           <div className="text-center text-sm text-muted-foreground">
-            Уже есть аккаунт?{' '}
-            <Link to="/login" className="text-primary font-medium hover:underline">
+            Уже есть аккаунт?{" "}
+            <Link
+              to="/login"
+              className="text-primary font-medium hover:underline"
+            >
               Войти
             </Link>
           </div>
