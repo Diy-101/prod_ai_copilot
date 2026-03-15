@@ -12,7 +12,8 @@ import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { generatePipeline } from '@/api/chat';
+import { ENDPOINTS } from '@/constants/api';
+import { usePipelineContext } from '@/contexts/PipelineContext';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -49,38 +50,67 @@ export const SynthesisChat: React.FC<SynthesisChatProps> = ({ onSynthesize, clas
     }
   }, [initialMessage]);
 
-  const handleSend = (overrideValue?: string) => {
+  const { setPipeline } = usePipelineContext();
+  const [isTyping, setIsTyping] = useState(false);
+
+  const handleSend = async (overrideValue?: string) => {
     const valueToSend = overrideValue || inputValue;
-    if (!valueToSend.trim()) return;
+    if (!valueToSend.trim() || isTyping) return;
 
     const userMessage = valueToSend;
     setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
     setInputValue('');
+    setIsTyping(true);
 
-    // Send message to generate pipeline endpoint
-    generatePipeline(userMessage);
+    // Initial bot reaction
+    setMessages(prev => [...prev, { 
+      role: 'assistant', 
+      content: 'Анализирую возможности... Подбираю нужные Capabilities.',
+      isGenerating: true 
+    }]);
 
-    // Simulate AI response
-    setTimeout(() => {
-      setMessages(prev => [...prev, { 
-        role: 'assistant', 
-        content: 'Анализирую возможности... Подбираю нужные Capabilities.',
-        isGenerating: true 
-      }]);
+    try {
+      const response = await fetch(ENDPOINTS.PIPELINES.GENERATE, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: userMessage }),
+      });
 
-      setTimeout(() => {
+      if (response.ok) {
+        const data = await response.json();
+        
+        // Update Pipeline Global State
+        if (data.status === 'ready') {
+          setPipeline(data);
+        }
+
         setMessages(prev => {
           const newMessages = [...prev];
           const lastIndex = newMessages.length - 1;
           newMessages[lastIndex] = { 
             role: 'assistant', 
-            content: 'Я подготовил Pipeline для вашей задачи. Посмотрите на схему по центру. Все готово к запуску!' 
+            content: data.chat_reply_ru || 'Пайплайн успешно собран. Посмотрите на схему по центру.' 
           };
           return newMessages;
         });
+        
         if (onSynthesize) onSynthesize(userMessage);
-      }, 1500);
-    }, 500);
+      } else {
+        throw new Error('Failed to generate pipeline');
+      }
+    } catch (error) {
+      setMessages(prev => {
+        const newMessages = [...prev];
+        const lastIndex = newMessages.length - 1;
+        newMessages[lastIndex] = { 
+          role: 'assistant', 
+          content: 'К сожалению, произошла ошибка при сборке пайплайна. Попробуйте перефразировать запрос.' 
+        };
+        return newMessages;
+      });
+    } finally {
+      setIsTyping(false);
+    }
   };
 
   return (
