@@ -6,9 +6,9 @@ import {
   Zap,
   Workflow,
   ChevronLeft,
-  Home
+  Home,
+  Share2
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -35,6 +35,11 @@ const navigationItems = [
     name: 'Pipelines',
     href: '/pipelines',
     icon: Workflow
+  },
+  {
+    name: 'Api Map',
+    href: '/api_map',
+    icon: Share2
   }
 ];
 

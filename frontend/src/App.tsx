@@ -17,6 +17,7 @@ import Actions from "./pages/Actions";
 import Home from "./pages/Home";
 import Capabilities from "./pages/Capabilities";
 import Pipelines from "./pages/Pipelines";
+import ApiMap from "./pages/ApiMap";
 import NotFound from "./pages/NotFound";
 
 /**
@@ -50,6 +51,9 @@ const AppRoutes = () => {
 
         {/* Pipelines - Visual workflow editor */}
         <Route path="pipelines" element={<Pipelines />} />
+
+        {/* Api Map - Knowledge Graph */}
+        <Route path="api_map" element={<ApiMap />} />
       </Route>
 
       {/* 404 page for unmatched routes */}
