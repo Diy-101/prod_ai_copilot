@@ -17,3 +17,25 @@ def test_score_maps_ru_users_query_to_en_capability_tokens():
     score = service._score_capability(query_tokens, query_tokens_expanded, capability)
 
     assert score >= 0.45
+
+
+def test_score_uses_capability_action_context_tokens():
+    service = SemanticSelectionService()
+    query_tokens = service._tokenize("Отправь email по кампании")
+    query_tokens_expanded = service._expand_tokens(query_tokens)
+    capability = SimpleNamespace(
+        name="execute_action",
+        description="General API action",
+        llm_payload={
+            "action_context_brief": {
+                "method": "POST",
+                "path": "/v1/campaigns/emails/send",
+                "tags": ["campaign", "email"],
+                "summary": "Send campaign emails",
+            }
+        },
+    )
+
+    score = service._score_capability(query_tokens, query_tokens_expanded, capability)
+
+    assert score > 0.0

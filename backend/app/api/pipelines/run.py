@@ -16,14 +16,14 @@ router = APIRouter(tags=["Pipelines"])
 @router.post("/{pipeline_id}/run", response_model=RunPipelineResponse, status_code=status.HTTP_202_ACCEPTED)
 async def run_pipeline(
     pipeline_id: UUID,
-    payload: RunPipelineRequest,
+    payload: RunPipelineRequest | None = None,
     session: AsyncSession = Depends(get_session),
 ):
     service = ExecutionService(session)
     try:
         run = await service.create_run(
             pipeline_id=pipeline_id,
-            inputs=payload.inputs,
+            inputs=(payload.inputs if payload is not None else {}),
         )
     except ExecutionServiceError as exc:
         message = str(exc)

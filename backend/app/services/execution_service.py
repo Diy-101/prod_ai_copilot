@@ -193,7 +193,7 @@ class ExecutionService:
                 capability_id, action = await self._get_action_from_node(node)
                 step_run.capability_id = capability_id
                 step_run.action_id = action.id
-                resolved_inputs, missing_external = self._resolve_node_inputs(
+                resolved_inputs, _missing_external = self._resolve_node_inputs(
                     node=node,
                     incoming_edges=incoming,
                     step_outputs=step_outputs,
@@ -201,7 +201,7 @@ class ExecutionService:
                     run_inputs=run.inputs or {},
                 )
                 request_payload = self._build_request_payload(action=action, resolved_inputs=resolved_inputs)
-                missing_required = sorted(set(missing_external + request_payload["missing_required"]))
+                missing_required = sorted(set(request_payload["missing_required"]))
                 if missing_required:
                     raise StepExecutionError(f"Missing inputs: {missing_required}")
 
@@ -209,6 +209,8 @@ class ExecutionService:
 
                 step_outputs[str(step)] = output_payload
                 context["step_outputs"] = step_outputs
+                context["final_output_step"] = step
+                context["final_output"] = output_payload
                 for edge in edges_by_source.get(step, []):
                     edge_type = edge.get("type")
                     to_step = edge.get("to_step")
@@ -277,6 +279,8 @@ class ExecutionService:
             "succeeded_steps": succeeded_count,
             "failed_steps": failed_count,
             "skipped_steps": skipped_count,
+            "final_output_step": context.get("final_output_step"),
+            "final_output": context.get("final_output"),
         }
 
         if failed_count == 0 and skipped_count == 0:
@@ -315,6 +319,8 @@ class ExecutionService:
         return {
             "step_outputs": {},
             "edge_values": {},
+            "final_output_step": None,
+            "final_output": None,
         }
 
     def _normalize_context(self, raw_context: Any) -> dict[str, Any]:
@@ -325,9 +331,15 @@ class ExecutionService:
         edge_values = context.get("edge_values")
         if not isinstance(edge_values, dict):
             edge_values = {}
+        final_output_step = context.get("final_output_step")
+        if not isinstance(final_output_step, int):
+            final_output_step = None
+        final_output = context.get("final_output")
         return {
             "step_outputs": step_outputs,
             "edge_values": edge_values,
+            "final_output_step": final_output_step,
+            "final_output": final_output,
         }
 
     @staticmethod
@@ -410,7 +422,9 @@ class ExecutionService:
             if input_name in run_inputs:
                 resolved[input_name] = run_inputs[input_name]
 
-        missing_external = [input_name for input_name in external_inputs if input_name not in resolved]
+        # One-click execution: external inputs are optional and do not block run start.
+        # Required fields are validated against action schema in _build_request_payload.
+        missing_external: list[str] = []
         return resolved, missing_external
 
     def _build_request_payload(self, *, action: Action, resolved_inputs: dict[str, Any]) -> dict[str, Any]:

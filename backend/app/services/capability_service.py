@@ -149,15 +149,156 @@ class CapabilityService:
 
     @staticmethod
     def _build_capability_payload(action: Action) -> dict[str, Any]:
+        input_schema = CapabilityService._build_input_schema(action)
+        output_schema = getattr(action, "response_schema", None)
+        data_format = CapabilityService._build_data_format(action)
+        action_context = CapabilityService._build_action_context(
+            action=action,
+            input_schema=input_schema,
+            output_schema=output_schema,
+            data_format=data_format,
+        )
+        openapi_hints = CapabilityService._build_openapi_hints(
+            action=action,
+            input_schema=input_schema,
+            output_schema=output_schema,
+        )
         return {
             "name": CapabilityService._build_capability_name(action),
             "description": CapabilityService._build_capability_description(action),
-            "input_schema": CapabilityService._build_input_schema(action),
-            "output_schema": getattr(action, "response_schema", None),
-            "data_format": CapabilityService._build_data_format(action),
+            "input_schema": input_schema,
+            "output_schema": output_schema,
+            "data_format": data_format,
             "llm_payload": {
                 "source": "deterministic",
+                "action_context_version": "v2",
+                "action_context": action_context,
+                "action_context_brief": CapabilityService._build_action_context_brief(
+                    action_context=action_context,
+                    openapi_hints=openapi_hints,
+                ),
+                "openapi_hints": openapi_hints,
             },
+        }
+
+    @staticmethod
+    def _build_action_context(
+        *,
+        action: Action,
+        input_schema: dict[str, Any] | None,
+        output_schema: dict[str, Any] | None,
+        data_format: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        method = getattr(action, "method", None)
+        method_value = method.value if hasattr(method, "value") else str(method or "")
+        parameter_names = CapabilityService._extract_parameter_names_by_location(
+            getattr(action, "parameters_schema", None)
+        )
+        request_property_names = CapabilityService._extract_schema_property_names(
+            getattr(action, "request_body_schema", None)
+        )
+        response_property_names = CapabilityService._extract_schema_property_names(
+            getattr(action, "response_schema", None)
+        )
+
+        return {
+            "action_id": str(getattr(action, "id", "")),
+            "operation_id": getattr(action, "operation_id", None),
+            "method": method_value,
+            "path": getattr(action, "path", None),
+            "base_url": getattr(action, "base_url", None),
+            "summary": getattr(action, "summary", None),
+            "description": getattr(action, "description", None),
+            "tags": getattr(action, "tags", None) or [],
+            "source_filename": getattr(action, "source_filename", None),
+            "input_schema": input_schema,
+            "output_schema": output_schema,
+            "parameters_schema": getattr(action, "parameters_schema", None),
+            "request_body_schema": getattr(action, "request_body_schema", None),
+            "response_schema": getattr(action, "response_schema", None),
+            "raw_spec": getattr(action, "raw_spec", None),
+            "data_format": data_format,
+            "input_signals": {
+                "required_inputs": CapabilityService._extract_required_inputs(input_schema),
+                "parameter_names_by_location": parameter_names,
+                "request_property_names": request_property_names,
+            },
+            "output_signals": {
+                "response_property_names": response_property_names,
+            },
+        }
+
+    @staticmethod
+    def _build_openapi_hints(
+        *,
+        action: Action,
+        input_schema: dict[str, Any] | None,
+        output_schema: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        raw_spec = getattr(action, "raw_spec", None)
+        if not isinstance(raw_spec, dict):
+            raw_spec = {}
+
+        request_content_types = CapabilityService._extract_content_types_from_request(raw_spec)
+        response_status_codes, response_content_types = (
+            CapabilityService._extract_response_hints(raw_spec)
+        )
+        security_requirements = (
+            raw_spec.get("security") if isinstance(raw_spec.get("security"), list) else []
+        )
+        parameter_names = CapabilityService._extract_parameter_names_by_location(
+            getattr(action, "parameters_schema", None)
+        )
+        vendor_extensions = {
+            key: value
+            for key, value in raw_spec.items()
+            if isinstance(key, str) and key.startswith("x-")
+        }
+        path_value = str(getattr(action, "path", "") or "")
+        path_segments = [
+            segment
+            for segment in path_value.strip("/").split("/")
+            if segment and not segment.startswith("{")
+        ]
+
+        return {
+            "deprecated": bool(raw_spec.get("deprecated")),
+            "security_requirements": security_requirements,
+            "request_content_types": request_content_types,
+            "response_content_types": response_content_types,
+            "response_status_codes": response_status_codes,
+            "has_request_body": bool(getattr(action, "request_body_schema", None)),
+            "has_response_body": bool(output_schema),
+            "required_inputs": CapabilityService._extract_required_inputs(input_schema),
+            "parameter_names_by_location": parameter_names,
+            "path_segments": path_segments,
+            "tags": getattr(action, "tags", None) or [],
+            "vendor_extensions": vendor_extensions,
+        }
+
+    @staticmethod
+    def _build_action_context_brief(
+        *,
+        action_context: dict[str, Any],
+        openapi_hints: dict[str, Any],
+    ) -> dict[str, Any]:
+        return {
+            "operation_id": action_context.get("operation_id"),
+            "method": action_context.get("method"),
+            "path": action_context.get("path"),
+            "base_url": action_context.get("base_url"),
+            "summary": action_context.get("summary"),
+            "description": action_context.get("description"),
+            "tags": action_context.get("tags") or [],
+            "required_inputs": (action_context.get("input_signals") or {}).get("required_inputs") or [],
+            "parameter_names_by_location": (action_context.get("input_signals") or {}).get(
+                "parameter_names_by_location"
+            )
+            or {},
+            "request_content_types": openapi_hints.get("request_content_types") or [],
+            "response_content_types": openapi_hints.get("response_content_types") or [],
+            "response_status_codes": openapi_hints.get("response_status_codes") or [],
+            "security_requirements": openapi_hints.get("security_requirements") or [],
         }
 
     @staticmethod
@@ -249,3 +390,120 @@ class CapabilityService:
             and isinstance(response_schema.get("type"), str)
             else [],
         }
+
+    @staticmethod
+    def _extract_required_inputs(input_schema: dict[str, Any] | None) -> list[str]:
+        if not isinstance(input_schema, dict):
+            return []
+
+        required = input_schema.get("required")
+        if isinstance(required, list):
+            return [str(item) for item in required if isinstance(item, str) and item]
+
+        # Nested schemas: {"properties":{"parameters":{"required":[...]}, "request_body":{"required":[...]}}}
+        nested_required: list[str] = []
+        properties = input_schema.get("properties")
+        if isinstance(properties, dict):
+            for nested_name in ("parameters", "request_body"):
+                nested_schema = properties.get(nested_name)
+                if not isinstance(nested_schema, dict):
+                    continue
+                nested = nested_schema.get("required")
+                if isinstance(nested, list):
+                    for value in nested:
+                        if isinstance(value, str) and value and value not in nested_required:
+                            nested_required.append(value)
+        return nested_required
+
+    @staticmethod
+    def _extract_parameter_names_by_location(
+        parameters_schema: dict[str, Any] | None,
+    ) -> dict[str, list[str]]:
+        names_by_location: dict[str, list[str]] = {
+            "path": [],
+            "query": [],
+            "header": [],
+            "cookie": [],
+        }
+        if not isinstance(parameters_schema, dict):
+            return names_by_location
+
+        properties = parameters_schema.get("properties")
+        if not isinstance(properties, dict):
+            return names_by_location
+
+        for name, schema in properties.items():
+            if not isinstance(name, str):
+                continue
+            location = "query"
+            if isinstance(schema, dict):
+                location_raw = schema.get("x-parameter-location")
+                if isinstance(location_raw, str) and location_raw in names_by_location:
+                    location = location_raw
+            if name not in names_by_location[location]:
+                names_by_location[location].append(name)
+        return names_by_location
+
+    @staticmethod
+    def _extract_schema_property_names(
+        schema: dict[str, Any] | None,
+        *,
+        limit: int = 64,
+    ) -> list[str]:
+        if not isinstance(schema, dict):
+            return []
+
+        result: list[str] = []
+        queue: list[dict[str, Any]] = [schema]
+        seen: set[str] = set()
+
+        while queue and len(result) < limit:
+            current = queue.pop(0)
+            properties = current.get("properties")
+            if isinstance(properties, dict):
+                for key, value in properties.items():
+                    if isinstance(key, str) and key not in seen:
+                        seen.add(key)
+                        result.append(key)
+                        if len(result) >= limit:
+                            break
+                    if isinstance(value, dict):
+                        queue.append(value)
+            items = current.get("items")
+            if isinstance(items, dict):
+                queue.append(items)
+
+        return result
+
+    @staticmethod
+    def _extract_content_types_from_request(raw_spec: dict[str, Any]) -> list[str]:
+        request_body = raw_spec.get("requestBody")
+        if not isinstance(request_body, dict):
+            return []
+        content = request_body.get("content")
+        if not isinstance(content, dict):
+            return []
+        return [str(content_type) for content_type in content.keys() if isinstance(content_type, str)]
+
+    @staticmethod
+    def _extract_response_hints(raw_spec: dict[str, Any]) -> tuple[list[str], list[str]]:
+        responses = raw_spec.get("responses")
+        if not isinstance(responses, dict):
+            return [], []
+
+        response_status_codes: list[str] = []
+        response_content_types: list[str] = []
+        for status_code, response_payload in responses.items():
+            status_value = str(status_code)
+            if status_value not in response_status_codes:
+                response_status_codes.append(status_value)
+            if not isinstance(response_payload, dict):
+                continue
+            content = response_payload.get("content")
+            if not isinstance(content, dict):
+                continue
+            for content_type in content.keys():
+                if isinstance(content_type, str) and content_type not in response_content_types:
+                    response_content_types.append(content_type)
+
+        return response_status_codes, response_content_types

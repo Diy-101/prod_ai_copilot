@@ -268,12 +268,13 @@ async def test_execute_run_linear_pipeline_succeeds_and_persists_context():
     await service.execute_run(run_id)
 
     assert run.status == ExecutionRunStatus.SUCCEEDED
-    assert run.summary == {
-        "total_steps": 2,
-        "succeeded_steps": 2,
-        "failed_steps": 0,
-        "skipped_steps": 0,
-    }
+    assert run.summary is not None
+    assert run.summary["total_steps"] == 2
+    assert run.summary["succeeded_steps"] == 2
+    assert run.summary["failed_steps"] == 0
+    assert run.summary["skipped_steps"] == 0
+    assert run.summary["final_output_step"] == 2
+    assert run.summary["final_output"] == {"ok": True}
     assert session.step_runs_by_step[1].status == ExecutionStepStatus.SUCCEEDED
     assert session.step_runs_by_step[2].status == ExecutionStepStatus.SUCCEEDED
     assert context_store.saved_contexts[-1]["edge_values"]["1:2:users"] == [{"id": 1}]
@@ -346,12 +347,13 @@ async def test_execute_run_is_fail_fast_and_marks_remaining_as_skipped():
     await service.execute_run(run_id)
 
     assert run.status == ExecutionRunStatus.PARTIAL_FAILED
-    assert run.summary == {
-        "total_steps": 3,
-        "succeeded_steps": 1,
-        "failed_steps": 1,
-        "skipped_steps": 1,
-    }
+    assert run.summary is not None
+    assert run.summary["total_steps"] == 3
+    assert run.summary["succeeded_steps"] == 1
+    assert run.summary["failed_steps"] == 1
+    assert run.summary["skipped_steps"] == 1
+    assert run.summary["final_output_step"] == 1
+    assert run.summary["final_output"] == {"users": [1]}
     assert session.step_runs_by_step[1].status == ExecutionStepStatus.SUCCEEDED
     assert session.step_runs_by_step[2].status == ExecutionStepStatus.FAILED
     assert session.step_runs_by_step[3].status == ExecutionStepStatus.SKIPPED

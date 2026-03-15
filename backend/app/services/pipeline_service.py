@@ -348,6 +348,7 @@ class PipelineService:
                     "output_type": cap.output_schema,
                     "required_inputs": self._extract_required_inputs(cap.input_schema),
                     "data_format": cap.data_format,
+                    "action_context": self._extract_capability_action_context(cap),
                 }
             )
 
@@ -533,6 +534,11 @@ class PipelineService:
             context_tokens=context_tokens,
             limit=5,
         )
+        grounding_terms = self._collect_capability_grounding_terms(
+            selected_capabilities=selected_capabilities,
+            missing_inputs=missing_inputs,
+            limit=20,
+        )
 
         capabilities_payload = []
         for item in selected_capabilities[:5]:
@@ -544,6 +550,7 @@ class PipelineService:
                     "required_inputs": self._extract_required_inputs(
                         getattr(cap, "input_schema", None)
                     ),
+                    "action_context": self._extract_capability_action_context(cap),
                 }
             )
 
@@ -555,6 +562,7 @@ class PipelineService:
             "previous_clarification_questions": previous_questions[-2:],
             "candidate_capabilities": capabilities_payload,
             "missing_required_inputs": missing_inputs,
+            "grounding_terms": grounding_terms,
         }
 
         system_prompt = (
@@ -562,7 +570,9 @@ class PipelineService:
             "для построения исполнимого pipeline. "
             "Верни только JSON формата {\"question_ru\": \"...\"}. "
             "Не используй префиксы вроде 'Уточнение 1/2'. "
-            "Не перечисляй много пунктов: один конкретный вопрос."
+            "Не перечисляй много пунктов: один конкретный вопрос. "
+            "Вопрос должен быть привязан к candidate_capabilities: используй термины из grounding_terms "
+            "или missing_required_inputs и не придумывай новые сущности/ручки."
         )
         user_prompt = (
             "Сгенерируй один следующий вопрос для пользователя на основе контекста.\n"
@@ -570,6 +580,8 @@ class PipelineService:
             "- Если stage=1: спроси про финальный бизнес-результат и критерий успеха.\n"
             "- Если stage=2: спроси про самый важный недостающий вход/ограничение для исполнения.\n"
             "- Вопрос должен быть конкретным и связанным с candidate_capabilities.\n"
+            "- Вопрос обязан содержать минимум один термин из grounding_terms.\n"
+            "- Если есть missing_required_inputs, приоритетно используй их в формулировке.\n"
             "- Верни только JSON.\n\n"
             f"CONTEXT:\n{json.dumps(prompt_payload, ensure_ascii=False)}"
         )
@@ -589,9 +601,154 @@ class PipelineService:
         normalized = normalized.replace("Уточнение 1/2:", "").replace("Уточнение 2/2:", "").strip()
         if len(normalized) < 12:
             return None
+        if not self._is_question_grounded_in_capabilities(
+            question=normalized,
+            grounding_terms=grounding_terms,
+            missing_inputs=missing_inputs,
+        ):
+            return self._build_grounded_fallback_question_ru(
+                question_number=question_number,
+                selected_capabilities=selected_capabilities,
+                missing_inputs=missing_inputs,
+            )
         if not normalized.endswith("?"):
             normalized = f"{normalized}?"
         return normalized
+
+    def _collect_capability_grounding_terms(
+        self,
+        *,
+        selected_capabilities: list[SelectedCapability],
+        missing_inputs: list[str],
+        limit: int = 20,
+    ) -> list[str]:
+        terms: list[str] = []
+        seen: set[str] = set()
+
+        for item in selected_capabilities[:5]:
+            cap = item.capability
+            context = self._extract_capability_action_context(cap)
+            for value in (
+                getattr(cap, "name", None),
+                getattr(cap, "description", None),
+                context.get("operation_id"),
+                context.get("path"),
+                context.get("method"),
+                context.get("summary"),
+            ):
+                if not isinstance(value, str):
+                    continue
+                cleaned = value.strip()
+                key = cleaned.lower()
+                if not cleaned or key in seen:
+                    continue
+                seen.add(key)
+                terms.append(cleaned)
+                if len(terms) >= limit:
+                    return terms
+
+            tags = context.get("tags")
+            if isinstance(tags, list):
+                for tag in tags:
+                    if not isinstance(tag, str):
+                        continue
+                    cleaned = tag.strip()
+                    key = cleaned.lower()
+                    if not cleaned or key in seen:
+                        continue
+                    seen.add(key)
+                    terms.append(cleaned)
+                    if len(terms) >= limit:
+                        return terms
+
+            required = context.get("required_inputs")
+            if isinstance(required, list):
+                for item_value in required:
+                    if not isinstance(item_value, str):
+                        continue
+                    cleaned = item_value.strip()
+                    key = cleaned.lower()
+                    if not cleaned or key in seen:
+                        continue
+                    seen.add(key)
+                    terms.append(cleaned)
+                    if len(terms) >= limit:
+                        return terms
+
+        for value in missing_inputs:
+            cleaned = str(value).strip()
+            key = cleaned.lower()
+            if not cleaned or key in seen:
+                continue
+            seen.add(key)
+            terms.append(cleaned)
+            if len(terms) >= limit:
+                break
+
+        return terms
+
+    def _is_question_grounded_in_capabilities(
+        self,
+        *,
+        question: str,
+        grounding_terms: list[str],
+        missing_inputs: list[str],
+    ) -> bool:
+        question_lower = question.lower()
+        question_tokens = self._tokenize_text(question)
+        if not question_tokens:
+            return False
+
+        for term in grounding_terms + missing_inputs:
+            term_text = str(term).strip()
+            if not term_text:
+                continue
+            term_lower = term_text.lower()
+            if term_lower in question_lower:
+                return True
+            term_tokens = self._tokenize_field_name(term_text)
+            if term_tokens and term_tokens & question_tokens:
+                return True
+
+        return False
+
+    def _build_grounded_fallback_question_ru(
+        self,
+        *,
+        question_number: int,
+        selected_capabilities: list[SelectedCapability],
+        missing_inputs: list[str],
+    ) -> str:
+        primary_signature = "выбранной capability"
+        if selected_capabilities:
+            cap = selected_capabilities[0].capability
+            context = self._extract_capability_action_context(cap)
+            method = context.get("method")
+            path = context.get("path")
+            if isinstance(method, str) and isinstance(path, str) and method and path:
+                primary_signature = f"{method} {path}"
+            else:
+                cap_name = str(getattr(cap, "name", "") or "").strip()
+                if cap_name:
+                    primary_signature = cap_name
+
+        if question_number <= 1:
+            return (
+                f"Какой конечный бизнес-результат нужен для сценария с {primary_signature}, "
+                "чтобы я собрал исполнимый pipeline?"
+            )
+
+        if missing_inputs:
+            first_input = self._humanize_input_name(missing_inputs[0])
+            return (
+                f"Для шага {primary_signature} какое значение вы передадите в поле "
+                f"\"{first_input}\"?"
+            )
+
+        return (
+            f"Для шага {primary_signature} какие входные параметры обязательны, "
+            "чтобы можно было выполнить pipeline без ошибок?"
+        )
 
     def _count_low_confidence_questions(
         self,
@@ -688,6 +845,35 @@ class PipelineService:
         label = re.sub(r"([a-z])([A-Z])", r"\1 \2", str(name))
         label = label.replace("_", " ").replace("-", " ").strip()
         return label or str(name)
+
+    def _extract_capability_action_context(self, capability: Any) -> dict[str, Any]:
+        llm_payload = getattr(capability, "llm_payload", None)
+        if not isinstance(llm_payload, dict):
+            return {}
+
+        brief = llm_payload.get("action_context_brief")
+        if isinstance(brief, dict):
+            return brief
+
+        fallback = llm_payload.get("action_context")
+        if not isinstance(fallback, dict):
+            return {}
+
+        # Keep prompt payload compact even if full action context is stored.
+        compact: dict[str, Any] = {}
+        for key in (
+            "operation_id",
+            "method",
+            "path",
+            "base_url",
+            "summary",
+            "description",
+            "tags",
+            "source_filename",
+        ):
+            if key in fallback:
+                compact[key] = fallback.get(key)
+        return compact
 
     def _normalize_workflow(
         self,
@@ -826,6 +1012,7 @@ class PipelineService:
                 "required_inputs": self._extract_required_inputs(sc.capability.input_schema),
                 "input_type": sc.capability.input_schema,
                 "output_type": sc.capability.output_schema,
+                "action_context": self._extract_capability_action_context(sc.capability),
             }
             for sc in selected_capabilities
         ]

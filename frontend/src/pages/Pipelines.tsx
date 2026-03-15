@@ -4,9 +4,9 @@ import { SynthesisChat } from '@/components/shared/SynthesisChat';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
 import {
   Activity,
+  Download,
   Play,
   Sparkles,
   ChevronDown,
@@ -251,7 +251,6 @@ export const Pipelines: React.FC = () => {
   const location = useLocation();
   const { currentPipeline } = usePipelineContext();
   const [expandedStep, setExpandedStep] = React.useState<number | null>(null);
-  const [runInputs, setRunInputs] = React.useState<Record<string, string>>({});
   const [execution, setExecution] = React.useState<ExecutionRunDetailResponse | null>(
     null
   );
@@ -266,20 +265,10 @@ export const Pipelines: React.FC = () => {
   const initialMessage = location.state?.initialMessage;
   const dialogId = location.state?.dialogId;
   const pipelineId = currentPipeline?.pipeline_id || null;
-  const requiredInputKeys = React.useMemo(() => {
-    if (!currentPipeline) {
-      return [];
-    }
-    const unique = new Set<string>();
-    currentPipeline.nodes.forEach((node) => {
-      node.external_inputs.forEach((name) => {
-        if (typeof name === 'string' && name.trim()) {
-          unique.add(name.trim());
-        }
-      });
-    });
-    return Array.from(unique).sort();
-  }, [currentPipeline]);
+  const finalOutput = React.useMemo(
+    () => execution?.summary?.final_output,
+    [execution]
+  );
 
   const graphLayout = currentPipeline && currentPipeline.nodes.length > 0
     ? buildGraphLayout(currentPipeline)
@@ -357,47 +346,16 @@ export const Pipelines: React.FC = () => {
     [pollExecution, stopPollingExecution]
   );
 
-  const handleRunInputChange = React.useCallback(
-    (key: string, value: string) => {
-      setRunInputs((prev) => ({
-        ...prev,
-        [key]: value,
-      }));
-    },
-    []
-  );
-
   const handleRunPipeline = React.useCallback(async () => {
     if (!pipelineId) {
       return;
     }
 
-    const missingRequiredInputs = requiredInputKeys.filter((inputName) => {
-      const value = runInputs[inputName];
-      return typeof value !== 'string' || value.trim() === '';
-    });
-
-    if (missingRequiredInputs.length > 0) {
-      toast.error(
-        `Заполните обязательные поля: ${missingRequiredInputs.join(', ')}`
-      );
-      return;
-    }
-
-    const normalizedInputs: Record<string, string> = {};
-    Object.entries(runInputs).forEach(([key, value]) => {
-      if (typeof value === 'string' && value.trim() !== '') {
-        normalizedInputs[key] = value.trim();
-      }
-    });
-
     try {
       setIsRunStarting(true);
       setExecution(null);
       notifiedTerminalStatusRef.current = null;
-      const run = await runPipeline(pipelineId, {
-        inputs: normalizedInputs,
-      });
+      const run = await runPipeline(pipelineId);
       setActiveRunId(run.run_id);
       toast.success('Запуск пайплайна начат');
       startPollingExecution(run.run_id);
@@ -406,7 +364,30 @@ export const Pipelines: React.FC = () => {
     } finally {
       setIsRunStarting(false);
     }
-  }, [pipelineId, requiredInputKeys, runInputs, startPollingExecution]);
+  }, [pipelineId, startPollingExecution]);
+
+  const handleDownloadResult = React.useCallback(() => {
+    if (finalOutput === undefined) {
+      toast.error('Финальный результат пока недоступен');
+      return;
+    }
+
+    try {
+      const blob = new Blob([JSON.stringify(finalOutput, null, 2)], {
+        type: 'application/json',
+      });
+      const url = window.URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `pipeline-run-${activeRunId || 'result'}.json`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      window.URL.revokeObjectURL(url);
+    } catch {
+      toast.error('Не удалось скачать результат');
+    }
+  }, [activeRunId, finalOutput]);
 
   React.useEffect(() => {
     setExecution(null);
@@ -414,16 +395,6 @@ export const Pipelines: React.FC = () => {
     notifiedTerminalStatusRef.current = null;
     stopPollingExecution();
   }, [pipelineId, stopPollingExecution]);
-
-  React.useEffect(() => {
-    setRunInputs((prev) => {
-      const next: Record<string, string> = {};
-      requiredInputKeys.forEach((key) => {
-        next[key] = prev[key] || '';
-      });
-      return next;
-    });
-  }, [requiredInputKeys]);
 
   React.useEffect(() => {
     return () => {
@@ -649,52 +620,39 @@ export const Pipelines: React.FC = () => {
               </Badge>
             </div>
 
-            {requiredInputKeys.length > 0 && (
-              <div className="space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Входные параметры запуска
-                </p>
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                  {requiredInputKeys.map((inputName) => (
-                    <div key={inputName} className="space-y-1">
-                      <label className="text-xs font-medium text-foreground">{inputName}</label>
-                      <Input
-                        value={runInputs[inputName] || ''}
-                        onChange={(event) =>
-                          handleRunInputChange(inputName, event.target.value)
-                        }
-                        placeholder={`Введите ${inputName}`}
-                        className="bg-background"
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="text-xs text-muted-foreground">
                 {activeRunId ? `Run ID: ${activeRunId}` : 'Запусков в текущей сессии пока нет'}
               </div>
-              <Button
-                className="gap-2"
-                disabled={
-                  !pipelineId ||
-                  isRunStarting ||
-                  isExecutionInProgress
-                }
-                onClick={handleRunPipeline}
-              >
-                {isRunStarting ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" /> Запуск...
-                  </>
-                ) : (
-                  <>
-                    <Play className="h-4 w-4" /> Запустить поток
-                  </>
-                )}
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  className="gap-2"
+                  disabled={finalOutput === undefined}
+                  onClick={handleDownloadResult}
+                >
+                  <Download className="h-4 w-4" /> Скачать JSON
+                </Button>
+                <Button
+                  className="gap-2"
+                  disabled={
+                    !pipelineId ||
+                    isRunStarting ||
+                    isExecutionInProgress
+                  }
+                  onClick={handleRunPipeline}
+                >
+                  {isRunStarting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" /> Запуск...
+                    </>
+                  ) : (
+                    <>
+                      <Play className="h-4 w-4" /> Подтвердить и запустить
+                    </>
+                  )}
+                </Button>
+              </div>
             </div>
 
             {execution && (

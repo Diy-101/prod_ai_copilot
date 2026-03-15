@@ -230,7 +230,8 @@ class SemanticSelectionService:
         description = str(getattr(capability, "description", "") or "")
         name_tokens = self._tokenize(name)
         description_tokens = self._tokenize(description)
-        combined_tokens = name_tokens | description_tokens
+        context_tokens = self._extract_context_tokens(capability)
+        combined_tokens = name_tokens | description_tokens | context_tokens
         if not combined_tokens:
             return 0.0
 
@@ -243,6 +244,13 @@ class SemanticSelectionService:
         name_tokens_expanded = self._expand_tokens(name_tokens)
         name_ratio = len(query_tokens_expanded & name_tokens_expanded) / len(query_tokens_expanded)
         exact_bonus = 0.22 if query_tokens_expanded <= combined_tokens_expanded else 0.0
+        context_ratio = 0.0
+        context_bonus = 0.0
+        if context_tokens:
+            context_tokens_expanded = self._expand_tokens(context_tokens)
+            context_overlap = query_tokens_expanded & context_tokens_expanded
+            context_ratio = len(context_overlap) / len(query_tokens_expanded)
+            context_bonus = min(0.16, len(context_overlap) * 0.03)
 
         generic_expanded = self._expand_tokens(self.GENERIC_TOKENS)
         entity_overlap = overlap - generic_expanded
@@ -258,12 +266,90 @@ class SemanticSelectionService:
         generic_penalty = self._generic_capability_penalty(combined_tokens)
 
         return (
-            max(overlap_ratio, name_ratio * 1.12)
+            max(overlap_ratio, name_ratio * 1.12, context_ratio * 0.95)
             + exact_bonus
+            + context_bonus
             + entity_bonus
             + crm_bonus
             - generic_penalty
         )
+
+    def _extract_context_tokens(self, capability: Capability) -> set[str]:
+        llm_payload = getattr(capability, "llm_payload", None)
+        if not isinstance(llm_payload, dict):
+            return set()
+
+        chunks: list[str] = []
+        for key in ("action_context_brief", "openapi_hints", "action_context"):
+            value = llm_payload.get(key)
+            if value is None:
+                continue
+            self._collect_text_chunks(value=value, chunks=chunks, depth=0, max_depth=4)
+
+        tokens: set[str] = set()
+        for chunk in chunks[:120]:
+            tokens.update(self._tokenize(chunk))
+        return tokens
+
+    def _collect_text_chunks(
+        self,
+        *,
+        value: object,
+        chunks: list[str],
+        depth: int,
+        max_depth: int,
+    ) -> None:
+        if depth > max_depth or len(chunks) >= 120:
+            return
+
+        if isinstance(value, str):
+            stripped = value.strip()
+            if stripped:
+                chunks.append(stripped)
+            return
+
+        if isinstance(value, dict):
+            preferred_keys = {
+                "operation_id",
+                "method",
+                "path",
+                "base_url",
+                "summary",
+                "description",
+                "tags",
+                "source_filename",
+                "required_inputs",
+                "request_content_types",
+                "response_content_types",
+                "response_status_codes",
+                "security_requirements",
+                "parameter_names_by_location",
+                "path_segments",
+                "input_signals",
+                "output_signals",
+            }
+            for key, item in value.items():
+                if not isinstance(key, str):
+                    continue
+                if key not in preferred_keys:
+                    continue
+                chunks.append(key)
+                self._collect_text_chunks(
+                    value=item,
+                    chunks=chunks,
+                    depth=depth + 1,
+                    max_depth=max_depth,
+                )
+            return
+
+        if isinstance(value, list):
+            for item in value[:30]:
+                self._collect_text_chunks(
+                    value=item,
+                    chunks=chunks,
+                    depth=depth + 1,
+                    max_depth=max_depth,
+                )
 
     def _resolve_confidence_tier(self, top_score: float, margin: float) -> str:
         if margin < self.LOW_MARGIN_THRESHOLD:

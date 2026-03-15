@@ -16,7 +16,7 @@ export type ExecutionStepStatus =
   | 'SKIPPED';
 
 export interface RunPipelineRequest {
-  inputs: Record<string, unknown>;
+  inputs?: Record<string, unknown>;
 }
 
 export interface RunPipelineResponse {
@@ -58,11 +58,13 @@ export interface ExecutionRunDetailResponse {
 
 export const runPipeline = async (
   pipelineId: string,
-  payload: RunPipelineRequest
+  payload: RunPipelineRequest = {}
 ): Promise<RunPipelineResponse> => {
   return apiRequest<RunPipelineResponse>(ENDPOINTS.PIPELINES.RUN(pipelineId), {
     method: 'POST',
-    body: JSON.stringify(payload),
+    body: JSON.stringify({
+      inputs: payload.inputs ?? {},
+    }),
   });
 };
 

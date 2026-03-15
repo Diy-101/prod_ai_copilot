@@ -1,0 +1,130 @@
+openapi: 3.0.3
+info:
+  title: Demo Linear Pipeline API
+  version: "1.0.0"
+  description: |
+    Минимальный линейный сценарий для теста pipeline:
+    1) получить пользователей
+    2) обработать пользователей в сегменты
+    3) вернуть финальный результат
+servers:
+  - url: http://localhost:8000/api
+paths:
+  /v1/demo/users/source:
+    get:
+      operationId: demoGetUsersSource
+      summary: Получить список пользователей
+      tags: [demo, users]
+      responses:
+        "200":
+          description: Users payload
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/User"
+                required: [users]
+  /v1/demo/users/process:
+    post:
+      operationId: demoProcessUsers
+      summary: Обработать пользователей в сегменты
+      tags: [demo, users, processing]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                users:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/User"
+              required: [users]
+      responses:
+        "200":
+          description: Segments payload
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  segments:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Segment"
+                required: [segments]
+  /v1/demo/users/deliver:
+    post:
+      operationId: demoDeliverSegments
+      summary: Вернуть финальный результат
+      tags: [demo, users, result]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                segments:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/Segment"
+              required: [segments]
+      responses:
+        "200":
+          description: Final result payload
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  result:
+                    $ref: "#/components/schemas/Result"
+                required: [result]
+components:
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+        email:
+          type: string
+          format: email
+        spend:
+          type: number
+        country:
+          type: string
+      required: [id, email]
+    Segment:
+      type: object
+      properties:
+        segment:
+          type: string
+        size:
+          type: integer
+        emails:
+          type: array
+          items:
+            type: string
+            format: email
+      required: [segment, size, emails]
+    Result:
+      type: object
+      properties:
+        delivered_segments:
+          type: array
+          items:
+            $ref: "#/components/schemas/Segment"
+        status:
+          type: string
+        delivered_at:
+          type: string
+          format: date-time
+      required: [delivered_segments, status, delivered_at]
+
