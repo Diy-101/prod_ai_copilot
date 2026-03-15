@@ -16,7 +16,7 @@ import { generatePipeline } from '@/api/chat';
 import { generateUUID } from '@/lib/utils';
 
 const Home: React.FC = () => {
-  const { actions, addActions } = useActionsContext();
+  const { actions, addActions, addCapabilities } = useActionsContext();
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isResultsModalOpen, setIsResultsModalOpen] = useState(false);
   const [importResults, setImportResults] = useState<{ succeeded_actions: Action[], failed_actions: any[] } | null>(null);
@@ -151,9 +151,11 @@ const Home: React.FC = () => {
           if (data && (data.succeeded_actions || data.actions)) {
             const successList = data.succeeded_actions || data.actions || [];
             const failedList = data.failed_actions || [];
+            const capabilitiesList = data.capabilities || [];
 
-            // Update global context with successful actions
+            // Update global context with successful actions and capabilities
             addActions(successList);
+            addCapabilities(capabilitiesList);
 
             setImportResults({
               succeeded_actions: successList,
