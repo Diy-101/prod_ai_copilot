@@ -4,6 +4,9 @@ stages:
   - build
   - deploy
 
+default:
+  retry: 2
+
 variables:
   PYTHON_IMAGE: "python:3.12-slim"
   NODE_IMAGE: "node:20-slim"
@@ -107,12 +110,13 @@ deploy-backend:
         sudo docker container prune -f || true &&
         git fetch --all &&
         git reset --hard origin/master &&
-        # Останавливаем старую версию, если она есть
-        [ -d "solution" ] && sudo docker compose -f solution/docker-compose.yml down || true
+        # Переходим в директорию бэкенда и подготавливаем окружение
         cd backend &&
-        echo 'DOCKER_IMAGE=$BACKEND_IMAGE' > .env &&
-        echo 'TAG=$CI_COMMIT_SHORT_SHA' >> .env &&
+        echo "DOCKER_IMAGE=$BACKEND_IMAGE" > .env &&
+        echo "TAG=$CI_COMMIT_SHORT_SHA" >> .env &&
         sudo docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY &&
+        # Останавливаем старую версию и очищаем тома (базу данных) для полного сброса
+        sudo docker compose down -v || true &&
         sudo docker compose pull &&
         sudo docker compose up -d
       "
