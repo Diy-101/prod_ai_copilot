@@ -48,7 +48,8 @@ const Actions: React.FC = () => {
     searchTerm,
     setSearchTerm,
     filteredActions,
-    addActions
+    addActions,
+    addCapabilities
   } = useActionsContext();
   
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
@@ -194,12 +195,21 @@ const Actions: React.FC = () => {
         isOpen={isImportModalOpen}
         onClose={() => setIsImportModalOpen(false)}
         onImport={(data) => {
-          if (data && (data.succeeded_actions || data.actions)) {
+          if (data && (data.succeeded_actions || data.actions || data.capabilities)) {
             const successList = data.succeeded_actions || data.actions || [];
             const failedList = data.failed_actions || [];
+            const capsList = (data.capabilities || []).map((cap: any) => ({
+              id: cap.id,
+              name: cap.name,
+              description: cap.description,
+              actionsCount: 1,
+              status: 'Ready',
+              aiTag: 'Imported'
+            }));
             
-            // Update main table with successful actions
+            // Update main library with successful actions and capabilities
             addActions(successList);
+            addCapabilities(capsList);
             
             // Prepare and open results modal
             setImportResults({

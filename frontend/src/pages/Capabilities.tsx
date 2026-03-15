@@ -20,52 +20,13 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-
-// Mock data for Capabilities
-const MOCK_BIO_CAPABILITIES = [
-  { 
-    id: 'c1', 
-    name: 'Update Customer Profile', 
-    description: 'Комплексная операция обновления данных пользователя: валидация полей, запись в БД и синхронизация с CRM.',
-    actionsCount: 3,
-    aiTag: 'Data Management',
-    status: 'Ready'
-  },
-  { 
-    id: 'c2', 
-    name: 'Process Refund Ticket', 
-    description: 'Инициирует возврат средств: проверяет статус транзакции в Stripe и создает тикет в Zendesk.',
-    actionsCount: 2,
-    aiTag: 'Finance',
-    status: 'Alpha'
-  },
-  { 
-    id: 'c3', 
-    name: 'Sync Marketing Leads', 
-    description: 'Автоматический сбор лидов из рекламных каналов и их распределение по менеджерам в Salesforce.',
-    actionsCount: 4,
-    aiTag: 'Marketing',
-    status: 'Ready'
-  },
-  { 
-    id: 'c4', 
-    name: 'User Onboarding Flow', 
-    description: 'Серия технических шагов для активации нового пользователя: создание аккаунта, отправка welcome-письма.',
-    actionsCount: 5,
-    aiTag: 'Operations',
-    status: 'Stable'
-  },
-  { 
-    id: 'c5', 
-    name: 'Inventory Restock Alert', 
-    description: 'Мониторинг остатков на складе и отправка алертов в Slack при достижении критического порога.',
-    actionsCount: 2,
-    aiTag: 'Logistics',
-    status: 'Beta'
-  }
-];
+import { useActionsContext } from '@/contexts/ActionContext';
 
 const Capabilities: React.FC = () => {
+  const { capabilities } = useActionsContext();
+  
+  const displayCapabilities = capabilities;
+
   return (
     <div className="flex h-full flex-col px-4 sm:px-6 py-6 sm:py-8">
       {/* Header Section */}
@@ -79,7 +40,6 @@ const Capabilities: React.FC = () => {
             Бизнес-навыки, созданные путем объединения нескольких API Actions. Обучены для понимания вашим ИИ.
           </p>
         </div>
-        {/* Actions removed as requested */}
       </div>
 
       {/* Search/Filters */}
@@ -93,10 +53,10 @@ const Capabilities: React.FC = () => {
         </div>
       </div>
 
-      {/* Grid Section - Added flex-1 and min-h-0 for proper scrolling behavior */}
+      {/* Grid Section */}
       <div className="flex-1 min-h-0 overflow-auto">
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4 pb-10">
-        {MOCK_BIO_CAPABILITIES.map((cap) => (
+        {displayCapabilities.map((cap) => (
           <Card key={cap.id} className="bg-card border-border hover:border-primary/50 transition-all group overflow-hidden flex flex-col h-full min-h-[280px]">
             <CardHeader className="p-4 pb-2">
               <div className="flex items-start justify-between">
