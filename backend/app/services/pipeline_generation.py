@@ -316,7 +316,7 @@ class PipelineGenerationService:
                 to_step = ordered_steps[index + 1]
                 edge_type = self._infer_edge_type_from_node(parsed_nodes[from_step])
                 parsed_edges.append(
-                    PipelineGraphEdge(from_step=from_step, to_step=to_step, type=edge_type).model_dump()
+                    PipelineGraphEdge(from_step=from_step, to_step=to_step, type=edge_type).model_dump(mode="json")
                 )
 
         parsed_edges = self._dedupe_edges(parsed_edges)
@@ -354,7 +354,7 @@ class PipelineGenerationService:
                 external_inputs=external_inputs,
                 endpoints=node["endpoints"],
             )
-            normalized_nodes.append(normalized_node.model_dump())
+            normalized_nodes.append(normalized_node.model_dump(mode="json"))
 
         return normalized_nodes, parsed_edges
 
@@ -396,7 +396,7 @@ class PipelineGenerationService:
                 input_type=input_type,
                 output_type=output_type,
             )
-            endpoints.append(endpoint.model_dump())
+            endpoints.append(endpoint.model_dump(mode="json"))
 
         if endpoints:
             return endpoints
@@ -412,7 +412,7 @@ class PipelineGenerationService:
             input_type=self._infer_input_type(fallback_capability),
             output_type=self._infer_output_type(fallback_capability, action),
         )
-        return [endpoint.model_dump()]
+        return [endpoint.model_dump(mode="json")]
 
     def _resolve_capability_from_endpoint(
         self,
@@ -471,7 +471,7 @@ class PipelineGenerationService:
             edge_type = self._infer_edge_type_from_node(parsed_nodes[from_step])
 
         edge = PipelineGraphEdge(from_step=from_step, to_step=to_step, type=edge_type)
-        return edge.model_dump()
+        return edge.model_dump(mode="json")
 
     def _dedupe_edges(self, edges: list[dict[str, Any]]) -> list[dict[str, Any]]:
         deduped: list[dict[str, Any]] = []
@@ -788,7 +788,7 @@ class PipelineGenerationService:
             if from_step is None or to_step is None:
                 return
             edge = PipelineGraphEdge(from_step=from_step, to_step=to_step, type=edge_type)
-            edges.append(edge.model_dump())
+            edges.append(edge.model_dump(mode="json"))
 
         add_edge("users", "segments", "users")
         add_edge("users", "assignments", "users")
