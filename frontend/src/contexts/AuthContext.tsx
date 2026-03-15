@@ -1,29 +1,13 @@
-/**
- * @fileoverview Authentication context for AI Copilot
- * 
- * This context provides authentication state management throughout the application.
- * It handles user authentication, session management, and user data updates.
- * Currently implements a mock authentication system for development purposes.
- * 
- * Features:
- * - User authentication state management
- * - Mock login/logout functionality
- * - User data persistence in localStorage
- * - User profile updates
- * - Automatic authentication for development
- * 
- * @author AI Copilot Development Team
- * @version 1.0.0
- */
-
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User, AuthState } from '@/types/auth';
+import * as authApi from '@/api/auth';
 
 /**
  * Extended authentication context type that includes authentication methods
  */
 interface AuthContextType extends AuthState {
-  login: (email: string, password: string) => Promise<boolean>;
+  login: (email: string, password: string) => Promise<void>;
+  register: (email: string, fullName: string, password: string) => Promise<void>;
   logout: () => void;
   updateUser: (user: Partial<User>) => void;
 }
@@ -34,91 +18,110 @@ interface AuthContextType extends AuthState {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 /**
- * Mock user data for development purposes
- * In production, this would be replaced with real user authentication
- */
-const mockUser: User = {
-  id: '1',
-  email: 'admin@aicopilot.com',
-  name: 'Администратор',
-  role: 'Admin'
-};
-
-/**
  * AuthProvider component
  * 
  * Provides authentication context to the application. Manages user
  * authentication state, login/logout functionality, and user data updates.
- * Currently implements a mock authentication system for development.
- * 
- * @param children - React children components
- * @returns JSX.Element - Authentication context provider
  */
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   /**
    * Authentication state including user data, authentication status, and token
    */
   const [authState, setAuthState] = useState<AuthState>({
-    user: mockUser,
-    isAuthenticated: true,
-    token: 'mock_jwt_token'
+    user: null,
+    isAuthenticated: false,
+    token: null
   });
+
+  const [isLoading, setIsLoading] = useState(true);
 
   /**
    * Initialize authentication state on component mount
-   * Automatically authenticates the user for development purposes
+   * Checks for stored token and user data in localStorage
    */
   useEffect(() => {
-    // Automatically authenticate user as Admin for development
-    const token = 'mock_jwt_token';
-    setAuthState({
-      user: mockUser,
-      isAuthenticated: true,
-      token
-    });
-    
-    // Persist authentication data to localStorage
-    localStorage.setItem('auth_token', token);
-    localStorage.setItem('user_data', JSON.stringify(mockUser));
+    const initAuth = () => {
+      try {
+        const storedToken = localStorage.getItem('auth_token');
+        const storedUser = localStorage.getItem('user_data');
+
+        if (storedToken && storedUser) {
+          setAuthState({
+            user: JSON.parse(storedUser),
+            isAuthenticated: true,
+            token: storedToken
+          });
+        }
+      } catch (error) {
+        console.error('Failed to parse stored auth data', error);
+        localStorage.removeItem('auth_token');
+        localStorage.removeItem('user_data');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    initAuth();
   }, []);
 
   /**
-   * Mock login function
-   * 
-   * In a real application, this would validate credentials against
-   * a backend service. Currently returns true for development.
-   * 
-   * @param email - User email address
-   * @param password - User password
-   * @returns Promise<boolean> - Always returns true for mock authentication
+   * Real login function
+   * @param email User email
+   * @param password User password
    */
-  const login = async (email: string, password: string): Promise<boolean> => {
-    // Always return true for mock authentication
-    return true;
+  const login = async (email: string, password: string) => {
+    const response = await authApi.login({ email, password });
+    
+    const { accessToken, user } = response;
+    
+    setAuthState({
+      user,
+      isAuthenticated: true,
+      token: accessToken
+    });
+    
+    localStorage.setItem('auth_token', accessToken);
+    localStorage.setItem('user_data', JSON.stringify(user));
   };
 
   /**
-   * Mock logout function
-   * 
-   * In a real application, this would clear the session and redirect
-   * to login. Currently re-authenticates immediately for development.
+   * Real register function
+   * @param email User email
+   * @param fullName User full name
+   * @param password User password
+   */
+  const register = async (email: string, fullName: string, password: string) => {
+    const response = await authApi.register({ email, full_name: fullName, password });
+    
+    const { accessToken, user } = response;
+    
+    setAuthState({
+      user,
+      isAuthenticated: true,
+      token: accessToken
+    });
+    
+    localStorage.setItem('auth_token', accessToken);
+    localStorage.setItem('user_data', JSON.stringify(user));
+  };
+
+  /**
+   * Logout function
+   * Clears session data and state
    */
   const logout = () => {
-    // Re-authenticate immediately for development purposes
-    const token = 'mock_jwt_token';
     setAuthState({
-      user: mockUser,
-      isAuthenticated: true,
-      token
+      user: null,
+      isAuthenticated: false,
+      token: null
     });
-    localStorage.setItem('auth_token', token);
-    localStorage.setItem('user_data', JSON.stringify(mockUser));
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('user_data');
   };
 
   /**
    * Updates user profile data
-   * 
-   * @param userData - Partial user data to update
+   * @param userData Partial user data to update
    */
   const updateUser = (userData: Partial<User>) => {
     if (authState.user) {
@@ -128,10 +131,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  if (isLoading) {
+    return null; // Or a loading spinner
+  }
+
   return (
     <AuthContext.Provider value={{
       ...authState,
       login,
+      register,
       logout,
       updateUser
     }}>
@@ -142,12 +150,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
 /**
  * Custom hook to access authentication context
- * 
- * Provides access to authentication state and methods throughout the application.
- * Must be used within an AuthProvider component.
- * 
- * @returns AuthContextType - Authentication context value
- * @throws Error - If used outside of AuthProvider
  */
 export const useAuth = () => {
   const context = useContext(AuthContext);

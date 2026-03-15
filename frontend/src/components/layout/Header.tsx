@@ -69,17 +69,17 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
               <Button variant="ghost" className="flex items-center gap-2">
                 <Avatar className="h-8 w-8">
                   <AvatarFallback className="bg-primary text-primary-foreground">
-                    {user?.name?.charAt(0).toUpperCase() || 'U'}
+                    {user?.fullName?.charAt(0).toUpperCase() || 'U'}
                   </AvatarFallback>
                 </Avatar>
                 <span className="hidden md:block text-sm font-medium">
-                  {user?.name}
+                  {user?.fullName}
                 </span>
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
               <div className="px-2 py-1.5">
-                <p className="text-sm font-medium">{user?.name}</p>
+                <p className="text-sm font-medium">{user?.fullName}</p>
                 <p className="text-xs text-muted-foreground">{user?.email}</p>
                 <Badge variant="secondary" className="mt-1 text-xs">
                   {user?.role}
@@ -135,11 +135,11 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
                   <div className="flex items-center gap-4">
                     <Avatar className="h-16 w-16">
                       <AvatarFallback className="bg-primary text-primary-foreground text-2xl">
-                        {user?.name?.charAt(0).toUpperCase() || 'U'}
+                        {user?.fullName?.charAt(0).toUpperCase() || 'U'}
                       </AvatarFallback>
                     </Avatar>
                     <div>
-                      <h4 className="text-xl font-semibold">{user?.name}</h4>
+                      <h4 className="text-xl font-semibold">{user?.fullName}</h4>
                       <Badge variant="secondary" className="mt-1">
                         {user?.role}
                       </Badge>

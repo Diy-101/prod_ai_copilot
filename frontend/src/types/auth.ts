@@ -19,21 +19,31 @@
 export interface User {
   /** Unique identifier for the user */
   id: string;
-  /** User's email address for authentication and communication */
+  /** User's email address */
   email: string;
   /** Display name for the user */
-  name: string;
-  /** User's role in the system for access control */
-  role: 'Viewer' | 'Editor' | 'Admin';
+  fullName: string;
+  /** User's role in the system */
+  role: 'USER' | 'ADMIN';
+  /** Whether the user is active */
+  isActive: boolean;
+  /** When the user was created */
+  createdAt?: string;
   /** Optional profile picture URL */
   avatar?: string;
 }
 
 /**
+ * Authentication response from the backend
+ */
+export interface AuthResponse {
+  accessToken: string;
+  expiresIn: number;
+  user: User;
+}
+
+/**
  * Authentication state interface
- * 
- * Represents the current authentication state of the application,
- * including user data, authentication status, and session token.
  */
 export interface AuthState {
   /** Current user data or null if not authenticated */
