@@ -1,11 +1,14 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User, AuthState } from '@/types/auth';
 import * as authApi from '@/api/auth';
+import * as authApi from '@/api/auth';
 
 /**
  * Extended authentication context type that includes authentication methods
  */
 interface AuthContextType extends AuthState {
+  login: (email: string, password: string) => Promise<void>;
+  register: (email: string, fullName: string, password: string) => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, fullName: string, password: string) => Promise<void>;
   logout: () => void;
@@ -19,7 +22,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 /**
  * AuthProvider component
- * 
+ *
  * Provides authentication context to the application. Manages user
  * authentication state, login/logout functionality, and user data updates.
  */
@@ -31,12 +34,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     user: null,
     isAuthenticated: false,
     token: null
+    user: null,
+    isAuthenticated: false,
+    token: null
   });
+
+  const [isLoading, setIsLoading] = useState(true);
 
   const [isLoading, setIsLoading] = useState(true);
 
   /**
    * Initialize authentication state on component mount
+   * Checks for stored token and user data in localStorage
    * Checks for stored token and user data in localStorage
    */
   useEffect(() => {
@@ -71,15 +80,54 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
    */
   const login = async (email: string, password: string) => {
     const response = await authApi.login({ email, password });
-    
+
     const { accessToken, user } = response;
-    
+
+    const initAuth = () => {
+      try {
+        const storedToken = localStorage.getItem('auth_token');
+        const storedUser = localStorage.getItem('user_data');
+
+        if (storedToken && storedUser) {
+          setAuthState({
+            user: JSON.parse(storedUser),
+            isAuthenticated: true,
+            token: storedToken
+          });
+        }
+      } catch (error) {
+        console.error('Failed to parse stored auth data', error);
+        localStorage.removeItem('auth_token');
+        localStorage.removeItem('user_data');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    initAuth();
+  }, []);
+
+  /**
+   * Real login function
+   * @param email User email
+   * @param password User password
+   */
+  const login = async (email: string, password: string) => {
+    const response = await authApi.login({ email, password });
+
+    const { accessToken, user } = response;
+
     setAuthState({
+      user,
       user,
       isAuthenticated: true,
       token: accessToken
+      token: accessToken
     });
-    
+
+    localStorage.setItem('auth_token', accessToken);
+    localStorage.setItem('user_data', JSON.stringify(user));
+  };
     localStorage.setItem('auth_token', accessToken);
     localStorage.setItem('user_data', JSON.stringify(user));
   };
@@ -92,20 +140,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
    */
   const register = async (email: string, fullName: string, password: string) => {
     const response = await authApi.register({ email, fullName, password });
-    
+
     const { accessToken, user } = response;
-    
+
     setAuthState({
       user,
       isAuthenticated: true,
       token: accessToken
     });
-    
+
     localStorage.setItem('auth_token', accessToken);
     localStorage.setItem('user_data', JSON.stringify(user));
   };
 
   /**
+   * Logout function
+   * Clears session data and state
    * Logout function
    * Clears session data and state
    */
@@ -114,13 +164,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       user: null,
       isAuthenticated: false,
       token: null
+      user: null,
+      isAuthenticated: false,
+      token: null
     });
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('user_data');
     localStorage.removeItem('auth_token');
     localStorage.removeItem('user_data');
   };
 
   /**
    * Updates user profile data
+   * @param userData Partial user data to update
    * @param userData Partial user data to update
    */
   const updateUser = (userData: Partial<User>) => {
@@ -135,10 +191,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return null; // Or a loading spinner
   }
 
+  if (isLoading) {
+    return null; // Or a loading spinner
+  }
+
   return (
     <AuthContext.Provider value={{
       ...authState,
       login,
+      register,
       register,
       logout,
       updateUser
