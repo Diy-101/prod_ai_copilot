@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database.session import SessionLocal
 from app.models import (
     Action,
+    Capability,
     ExecutionRun,
     ExecutionRunStatus,
     ExecutionStepRun,
@@ -119,7 +120,7 @@ class ExecutionService:
         await self.session.commit()
         await self.session.refresh(run)
 
-        await self.context_store.save_context(run.id, {"step_outputs": {}, "edge_values": {}})
+        await self.context_store.save_context(run.id, self._build_empty_context())
         return run
 
     @classmethod
@@ -166,11 +167,10 @@ class ExecutionService:
         await self.session.commit()
 
         context = await self.context_store.load_context(run.id)
-        if not isinstance(context, dict):
-            context = {}
-        step_outputs = context.get("step_outputs")
-        if not isinstance(step_outputs, dict):
-            step_outputs = {}
+        context = self._normalize_context(context)
+        step_outputs = context["step_outputs"]
+        edge_values = context["edge_values"]
+        await self.context_store.save_context(run.id, context)
 
         status_by_step: dict[int, ExecutionStepStatus] = {}
         succeeded_count = 0
@@ -190,11 +190,14 @@ class ExecutionService:
             await self.session.commit()
 
             try:
-                action = await self._get_action_from_node(node)
+                capability_id, action = await self._get_action_from_node(node)
+                step_run.capability_id = capability_id
+                step_run.action_id = action.id
                 resolved_inputs, missing_external = self._resolve_node_inputs(
                     node=node,
                     incoming_edges=incoming,
                     step_outputs=step_outputs,
+                    edge_values=edge_values,
                     run_inputs=run.inputs or {},
                 )
                 request_payload = self._build_request_payload(action=action, resolved_inputs=resolved_inputs)
@@ -206,9 +209,6 @@ class ExecutionService:
 
                 step_outputs[str(step)] = output_payload
                 context["step_outputs"] = step_outputs
-                edge_values = context.get("edge_values")
-                if not isinstance(edge_values, dict):
-                    edge_values = {}
                 for edge in edges_by_source.get(step, []):
                     edge_type = edge.get("type")
                     to_step = edge.get("to_step")
@@ -216,32 +216,28 @@ class ExecutionService:
                         continue
                     value = self._extract_value_from_output(output_payload, edge_type)
                     if value is not None:
-                        edge_values[f"{step}:{to_step}:{edge_type}"] = value
+                        edge_values[self._build_edge_value_key(step, to_step, edge_type)] = value
                 context["edge_values"] = edge_values
                 await self.context_store.save_context(run.id, context)
 
-                step_run.status = ExecutionStepStatus.SUCCEEDED
-                step_run.resolved_inputs = request_payload["resolved_inputs"]
-                step_run.request_snapshot = request_payload["request_snapshot"]
-                step_run.response_snapshot = response_snapshot
-                step_run.error = None
-                step_run.finished_at = self._now_utc()
-                step_run.duration_ms = self._duration_ms(step_run.started_at, step_run.finished_at)
-                self.session.add(step_run)
-                await self.session.commit()
+                await self._finalize_step_run(
+                    step_run=step_run,
+                    status=ExecutionStepStatus.SUCCEEDED,
+                    request_payload=request_payload,
+                    response_snapshot=response_snapshot,
+                    error=None,
+                )
 
                 status_by_step[step] = ExecutionStepStatus.SUCCEEDED
                 succeeded_count += 1
             except StepExecutionError as exc:
-                step_run.status = ExecutionStepStatus.FAILED
-                step_run.resolved_inputs = request_payload.get("resolved_inputs") if "request_payload" in locals() else None
-                step_run.request_snapshot = request_payload.get("request_snapshot") if "request_payload" in locals() else None
-                step_run.response_snapshot = exc.response_snapshot
-                step_run.error = str(exc)
-                step_run.finished_at = self._now_utc()
-                step_run.duration_ms = self._duration_ms(step_run.started_at, step_run.finished_at)
-                self.session.add(step_run)
-                await self.session.commit()
+                await self._finalize_step_run(
+                    step_run=step_run,
+                    status=ExecutionStepStatus.FAILED,
+                    request_payload=request_payload,
+                    response_snapshot=exc.response_snapshot,
+                    error=str(exc),
+                )
 
                 status_by_step[step] = ExecutionStepStatus.FAILED
                 failed_count += 1
@@ -254,15 +250,15 @@ class ExecutionService:
                 )
                 break
             except Exception as exc:
-                step_run.status = ExecutionStepStatus.FAILED
-                step_run.resolved_inputs = request_payload.get("resolved_inputs") if "request_payload" in locals() else None
-                step_run.request_snapshot = request_payload.get("request_snapshot") if "request_payload" in locals() else None
-                step_run.response_snapshot = None
-                step_run.error = f"Unhandled step error: {exc}"
-                step_run.finished_at = self._now_utc()
-                step_run.duration_ms = self._duration_ms(step_run.started_at, step_run.finished_at)
-                self.session.add(step_run)
-                await self.session.commit()
+                await self._finalize_step_run(
+                    step_run=step_run,
+                    status=ExecutionStepStatus.FAILED,
+                    request_payload=request_payload,
+                    response_snapshot={
+                        "error_type": type(exc).__name__,
+                    },
+                    error=f"Unhandled step error: {exc}",
+                )
 
                 status_by_step[step] = ExecutionStepStatus.FAILED
                 failed_count += 1
@@ -295,17 +291,72 @@ class ExecutionService:
 
         await self.session.commit()
 
-    async def _get_action_from_node(self, node: dict[str, Any]) -> Action:
+    async def _finalize_step_run(
+        self,
+        *,
+        step_run: ExecutionStepRun,
+        status: ExecutionStepStatus,
+        request_payload: dict[str, Any],
+        response_snapshot: dict[str, Any] | None,
+        error: str | None,
+    ) -> None:
+        step_run.status = status
+        step_run.resolved_inputs = request_payload.get("resolved_inputs")
+        step_run.request_snapshot = request_payload.get("request_snapshot")
+        step_run.response_snapshot = response_snapshot
+        step_run.error = error
+        step_run.finished_at = self._now_utc()
+        step_run.duration_ms = self._duration_ms(step_run.started_at, step_run.finished_at)
+        self.session.add(step_run)
+        await self.session.commit()
+
+    @staticmethod
+    def _build_empty_context() -> dict[str, Any]:
+        return {
+            "step_outputs": {},
+            "edge_values": {},
+        }
+
+    def _normalize_context(self, raw_context: Any) -> dict[str, Any]:
+        context = dict(raw_context) if isinstance(raw_context, dict) else {}
+        step_outputs = context.get("step_outputs")
+        if not isinstance(step_outputs, dict):
+            step_outputs = {}
+        edge_values = context.get("edge_values")
+        if not isinstance(edge_values, dict):
+            edge_values = {}
+        return {
+            "step_outputs": step_outputs,
+            "edge_values": edge_values,
+        }
+
+    @staticmethod
+    def _build_edge_value_key(from_step: int, to_step: int, edge_type: str) -> str:
+        return f"{from_step}:{to_step}:{edge_type}"
+
+    async def _get_action_from_node(self, node: dict[str, Any]) -> tuple[uuid.UUID, Action]:
         endpoint = self._get_primary_endpoint(node)
-        action_id = endpoint.get("action_id") if isinstance(endpoint, dict) else None
-        action_uuid = self._to_uuid(action_id)
+        capability_id = endpoint.get("capability_id") if isinstance(endpoint, dict) else None
+        capability_uuid = self._to_uuid(capability_id)
+        if capability_uuid is None:
+            raise StepExecutionError("Node endpoint does not have a valid capability_id")
+
+        capability = await self.session.get(Capability, capability_uuid)
+        if capability is None:
+            raise StepExecutionError(f"Capability not found: {capability_uuid}")
+
+        action_uuid = capability.action_id
         if action_uuid is None:
-            raise StepExecutionError("Node endpoint does not have a valid action_id")
+            raise StepExecutionError(
+                f"Capability does not have action_id: {capability_uuid}"
+            )
 
         action = await self.session.get(Action, action_uuid)
         if action is None:
-            raise StepExecutionError(f"Action not found: {action_uuid}")
-        return action
+            raise StepExecutionError(
+                f"Action not found for capability {capability_uuid}: {action_uuid}"
+            )
+        return capability_uuid, action
 
     def _create_step_run_from_node(
         self,
@@ -332,14 +383,20 @@ class ExecutionService:
         node: dict[str, Any],
         incoming_edges: list[dict[str, Any]],
         step_outputs: dict[str, Any],
+        edge_values: dict[str, Any],
         run_inputs: dict[str, Any],
     ) -> tuple[dict[str, Any], list[str]]:
         resolved: dict[str, Any] = {}
 
         for edge in incoming_edges:
             src = edge.get("from_step")
+            dst = edge.get("to_step")
             edge_type = edge.get("type")
-            if not isinstance(src, int) or not isinstance(edge_type, str):
+            if not isinstance(src, int) or not isinstance(dst, int) or not isinstance(edge_type, str):
+                continue
+            edge_key = self._build_edge_value_key(src, dst, edge_type)
+            if edge_key in edge_values:
+                resolved[edge_type] = edge_values[edge_key]
                 continue
             source_output = step_outputs.get(str(src))
             if source_output is None:
