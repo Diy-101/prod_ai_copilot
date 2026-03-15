@@ -103,7 +103,7 @@ class PipelineService:
             raw_graph, selected_capabilities
         )
         normalized_nodes, normalized_edges = self._review_graph_with_llm(
-            normalized_nodes, normalized_edges
+            normalized_nodes, normalized_edges, selected_capabilities
         )
         normalized_edges = self._repair_edges_with_data_flow(
             normalized_nodes, normalized_edges
@@ -400,15 +400,30 @@ class PipelineService:
         self,
         nodes: list[dict[str, Any]],
         edges: list[dict[str, Any]],
+        selected_capabilities: list[SelectedCapability],
     ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         if not nodes:
             return nodes, edges
 
+        capabilities_payload = [
+            {
+                "id": str(sc.capability.id),
+                "action_id": str(sc.capability.action_id),
+                "name": sc.capability.name,
+                "description": sc.capability.description,
+                "required_inputs": self._extract_required_inputs(sc.capability.input_schema),
+                "input_type": sc.capability.input_schema,
+                "output_type": sc.capability.output_schema,
+            }
+            for sc in selected_capabilities
+        ]
+
         review_prompt = (
             "Проверь граф пайплайна и верни только JSON.\n"
-            "Не используй внешний контекст. Используй только GRAPH.\n\n"
+            "Не используй внешний контекст. Используй только GRAPH и CAPABILITIES.\n\n"
             "Сделай обратную проверку от финального шага к источникам.\n"
             "Удали висящие узлы и рёбра, которые не участвуют в достижении финального шага.\n"
+            "Не придумывай новые шаги. Разрешено только удалить лишнее или исправить связи.\n"
             "Сохрани DAG.\n\n"
             "Ответ строго в формате:\n"
             "{\n"
@@ -417,6 +432,7 @@ class PipelineService:
             "    {\"from_step\": 1, \"to_step\": 2, \"type\": \"field_name\"}\n"
             "  ]\n"
             "}\n\n"
+            f"CAPABILITIES:\n{json.dumps(capabilities_payload, ensure_ascii=False)}\n\n"
             f"GRAPH:\n{json.dumps({'nodes': nodes, 'edges': edges}, ensure_ascii=False)}"
         )
         system_prompt = (
@@ -765,6 +781,7 @@ class PipelineService:
         edges: list[dict[str, Any]],
     ) -> tuple[bool, list[str]]:
         missing: list[str] = []
+        missing.extend(self._collect_graph_structure_issues(nodes, edges))
         edges_by_target: dict[int, set[str]] = {}
         for edge in edges:
             to_step = edge.get("to_step")
@@ -798,6 +815,104 @@ class PipelineService:
 
         return len(missing) == 0, missing
 
+    def _collect_graph_structure_issues(
+        self,
+        nodes: list[dict[str, Any]],
+        edges: list[dict[str, Any]],
+    ) -> list[str]:
+        issues: list[str] = []
+        valid_steps = {
+            step for node in nodes if isinstance((step := node.get("step")), int)
+        }
+        if not valid_steps:
+            return ["graph: empty"]
+
+        valid_edges: list[dict[str, Any]] = []
+        for edge in edges:
+            src = edge.get("from_step")
+            dst = edge.get("to_step")
+            edge_type = edge.get("type")
+            if not isinstance(src, int) or not isinstance(dst, int):
+                issues.append("graph: invalid_edge_reference")
+                continue
+            if src not in valid_steps or dst not in valid_steps:
+                issues.append("graph: edge_to_missing_node")
+                continue
+            if not isinstance(edge_type, str) or not edge_type.strip():
+                issues.append("graph: invalid_edge_type")
+                continue
+            valid_edges.append(edge)
+
+        if len(valid_steps) > 1 and not valid_edges:
+            issues.append("graph: missing_edges")
+
+        if valid_edges and self._graph_has_cycle(valid_steps, valid_edges):
+            issues.append("graph: cycle")
+
+        expected_inputs: dict[int, set[int]] = {step: set() for step in valid_steps}
+        expected_outputs: dict[int, set[int]] = {step: set() for step in valid_steps}
+        reverse_adjacency: dict[int, set[int]] = {step: set() for step in valid_steps}
+        for edge in valid_edges:
+            src = edge["from_step"]
+            dst = edge["to_step"]
+            expected_outputs[src].add(dst)
+            expected_inputs[dst].add(src)
+            reverse_adjacency[dst].add(src)
+
+        if len(valid_steps) > 1 and valid_edges:
+            terminal_step = max(valid_steps)
+            reachable_to_terminal: set[int] = set()
+            stack: list[int] = [terminal_step]
+            while stack:
+                current = stack.pop()
+                if current in reachable_to_terminal:
+                    continue
+                reachable_to_terminal.add(current)
+                stack.extend(reverse_adjacency.get(current, set()))
+
+            for step in sorted(valid_steps - reachable_to_terminal):
+                issues.append(f"graph: unreachable_to_terminal:{step}")
+
+        for node in nodes:
+            step = node.get("step")
+            if not isinstance(step, int):
+                continue
+            actual_inputs = set(self._normalize_int_list(node.get("input_connected_from")))
+            actual_outputs = set(self._normalize_int_list(node.get("output_connected_to")))
+            if actual_inputs != expected_inputs.get(step, set()):
+                issues.append(f"graph: node_link_mismatch_input:{step}")
+            if actual_outputs != expected_outputs.get(step, set()):
+                issues.append(f"graph: node_link_mismatch_output:{step}")
+
+        return issues
+
+    def _graph_has_cycle(
+        self,
+        valid_steps: set[int],
+        edges: list[dict[str, Any]],
+    ) -> bool:
+        adjacency: dict[int, set[int]] = {step: set() for step in valid_steps}
+        for edge in edges:
+            adjacency.setdefault(edge["from_step"], set()).add(edge["to_step"])
+
+        visiting: set[int] = set()
+        visited: set[int] = set()
+
+        def dfs(step: int) -> bool:
+            if step in visiting:
+                return True
+            if step in visited:
+                return False
+            visiting.add(step)
+            for neighbor in adjacency.get(step, set()):
+                if dfs(neighbor):
+                    return True
+            visiting.remove(step)
+            visited.add(step)
+            return False
+
+        return any(dfs(step) for step in valid_steps)
+
     def _build_chat_reply_ru(
         self, nodes: list[dict[str, Any]], edges: list[dict[str, Any]]
     ) -> str:
@@ -805,6 +920,11 @@ class PipelineService:
             return "Мне не удалось построить шаги выполнения."
 
         steps = sorted(nodes, key=lambda n: n.get("step", 0))
+        if len(steps) > 1 and not edges:
+            return (
+                "Мне удалось выделить шаги, но не удалось корректно связать их "
+                "в исполнимый сценарий."
+            )
         is_linear = self._is_linear_chain(steps, edges)
 
         if is_linear:
@@ -961,6 +1081,8 @@ class PipelineService:
             return False
         if len(nodes) == 1:
             return True
+        if len(edges) != len(nodes) - 1:
+            return False
 
         outgoing = {n["step"]: set() for n in nodes}
         incoming = {n["step"]: set() for n in nodes}

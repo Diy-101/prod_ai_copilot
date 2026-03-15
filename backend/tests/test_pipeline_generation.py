@@ -166,3 +166,75 @@ def test_ensure_external_inputs_adds_missing_for_final_step():
     service._ensure_external_inputs(nodes, edges)
 
     assert nodes[0]["external_inputs"] == ["segments"]
+
+
+def test_validate_ready_graph_rejects_multiple_nodes_without_edges():
+    service = _build_service()
+    nodes = [
+        {
+            "step": 3,
+            "name": "Segment users",
+            "input_connected_from": [],
+            "output_connected_to": [],
+            "external_inputs": [],
+            "endpoints": [{"capability_id": "a", "action_id": "b", "input_type": None}],
+        },
+        {
+            "step": 4,
+            "name": "Send offers",
+            "input_connected_from": [],
+            "output_connected_to": [],
+            "external_inputs": [],
+            "endpoints": [{"capability_id": "c", "action_id": "d", "input_type": None}],
+        },
+    ]
+
+    is_ready, missing = service._validate_ready_graph(nodes, [])
+
+    assert is_ready is False
+    assert "graph: missing_edges" in missing
+
+
+def test_build_chat_reply_reports_unconnected_steps():
+    service = _build_service()
+    nodes = [
+        {"step": 3, "name": "Segment users"},
+        {"step": 4, "name": "Send offers"},
+    ]
+
+    reply = service._build_chat_reply_ru(nodes, [])
+
+    assert "не удалось корректно связать" in reply
+
+
+def test_is_linear_chain_requires_real_edges():
+    service = _build_service()
+    nodes = [
+        {"step": 1},
+        {"step": 2},
+    ]
+
+    assert service._is_linear_chain(nodes, []) is False
+
+
+def test_review_graph_prompt_uses_capabilities_context(monkeypatch):
+    service = _build_service()
+    capability = _build_capability()
+    selected = [SelectedCapability(capability=capability, score=1.0)]
+    captured: dict[str, str] = {}
+
+    def fake_chat_json(*, system_prompt, user_prompt):
+        captured["system_prompt"] = system_prompt
+        captured["user_prompt"] = user_prompt
+        return {"keep_steps": [1], "edges": []}
+
+    monkeypatch.setattr("app.services.pipeline_service.chat_json", fake_chat_json)
+
+    service._review_graph_with_llm(
+        nodes=[{"step": 1, "name": "Get users"}],
+        edges=[],
+        selected_capabilities=selected,
+    )
+
+    assert "CAPABILITIES:" in captured["user_prompt"]
+    assert capability.name in captured["user_prompt"]
