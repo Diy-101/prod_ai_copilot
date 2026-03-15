@@ -10,6 +10,7 @@ from fastapi.exceptions import RequestValidationError
 from app.api.ping.router import router as health_router
 from app.api.actions.router import router as actions_router
 from app.api.capabilities.router import router as capabilities_router
+from app.api.executions.router import router as executions_router
 from app.api.pipelines.router import router as pipelines_router
 from app.utils.error_handlers import (
     validation_exception_handler,
@@ -115,6 +116,7 @@ app.include_router(health_router, prefix="/api")
 app.include_router(actions_router, prefix="/api")
 app.include_router(capabilities_router, prefix="/api")
 app.include_router(pipelines_router, prefix="/api")
+app.include_router(executions_router, prefix="/api")
 
 if auth_router is not None and login_router is not None:
     app.include_router(auth_router, prefix="/api")

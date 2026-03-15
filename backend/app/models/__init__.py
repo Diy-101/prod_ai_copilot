@@ -2,6 +2,12 @@ from app.models.base import Base
 from app.models.user import User, UserRole
 from app.models.action import Action, ActionIngestStatus, HttpMethod
 from app.models.capability import Capability
+from app.models.execution import (
+    ExecutionRun,
+    ExecutionRunStatus,
+    ExecutionStepRun,
+    ExecutionStepStatus,
+)
 from app.models.pipeline import Pipeline, PipelineStatus
 
 __all__ = [
@@ -12,6 +18,10 @@ __all__ = [
     "ActionIngestStatus",
     "HttpMethod",
     "Capability",
+    "ExecutionRun",
+    "ExecutionRunStatus",
+    "ExecutionStepRun",
+    "ExecutionStepStatus",
     "Pipeline",
     "PipelineStatus",
 ]

@@ -3,7 +3,16 @@ import os
 from sqlalchemy import select, text
 
 # Important: import all ORM models before create_all() so SQLAlchemy metadata is complete.
-from app.models import Action, Base, Capability, Pipeline, User, UserRole
+from app.models import (
+    Action,
+    Base,
+    Capability,
+    ExecutionRun,
+    ExecutionStepRun,
+    Pipeline,
+    User,
+    UserRole,
+)
 from app.core.database.session import SessionLocal, engine
 from app.utils.hashing import hash_password
 
