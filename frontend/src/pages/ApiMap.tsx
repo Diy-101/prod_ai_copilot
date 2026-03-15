@@ -2,10 +2,54 @@ import React, { useMemo } from 'react';
 import ReactFlow, {
   Controls,
   Node,
-  Edge
+  Edge,
+  Handle,
+  Position,
+  NodeProps
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { useActionsContext } from '@/contexts/ActionContext';
+
+/**
+ * Custom components for nodes to control handle visibility
+ */
+
+// Central API Card
+const ApiCentralNode = ({ data }: NodeProps) => (
+  <div className="px-6 py-4 bg-blue-600 text-white rounded-xl shadow-[0_10px_25px_-5px_rgba(37,99,235,0.5)] font-bold text-sm text-center border-none min-w-[180px] relative">
+    {data.label}
+    {/* Only Source handle, and it's hidden to remove the "dots" as requested */}
+    <Handle 
+      type="source" 
+      position={Position.Bottom} 
+      className="w-0 h-0 border-none !bg-transparent opacity-0 pointer-events-none" 
+    />
+  </div>
+);
+
+// Action Library Card
+const ApiActionNode = ({ data }: NodeProps) => (
+  <div 
+    className="px-4 py-2 text-white rounded-lg shadow-md font-medium text-[11px] text-center border-none min-w-[140px] relative"
+    style={{ 
+      background: data.color,
+      boxShadow: `0 4px 6px -1px ${data.color}40`
+    }}
+  >
+    {data.label}
+    {/* Only Target handle, and it's hidden to remove the "dots" as requested */}
+    <Handle 
+      type="target" 
+      position={Position.Top} 
+      className="w-0 h-0 border-none !bg-transparent opacity-0 pointer-events-none" 
+    />
+  </div>
+);
+
+const nodeTypes = {
+  api: ApiCentralNode,
+  action: ApiActionNode
+};
 
 const ApiMap: React.FC = () => {
   const { actions } = useActionsContext();
@@ -17,23 +61,10 @@ const ApiMap: React.FC = () => {
     // Central Node: OpenAPI Specification
     const centralNode: Node = {
       id: centralNodeId,
+      type: 'api', // Custom type
       data: { label: 'OpenAPI Specification' },
       position: { x: 400, y: 300 },
-      style: {
-        background: '#3b82f6',
-        color: '#fff',
-        borderRadius: '12px',
-        width: 180,
-        height: 60,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        fontWeight: 'bold',
-        fontSize: '14px',
-        boxShadow: '0 10px 25px -5px rgba(59, 130, 246, 0.5)',
-        border: 'none',
-        zIndex: 10
-      },
+      // Style is now mostly in the component
     };
 
     // If no real actions, use mock actions
@@ -63,25 +94,11 @@ const ApiMap: React.FC = () => {
 
       return {
         id: `action-${index}`,
-        data: { label },
+        type: 'action', // Custom type
+        data: { label, color },
         position: {
           x: centralNode.position.x + radius * Math.cos(angle) + 40,
           y: centralNode.position.y + radius * Math.sin(angle) + 10
-        },
-        style: {
-          background: color,
-          color: '#fff',
-          borderRadius: '8px',
-          width: 140,
-          height: 40,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontSize: '11px',
-          fontWeight: 500,
-          border: 'none',
-          boxShadow: `0 4px 6px -1px ${color}40`,
-          cursor: 'pointer'
         },
       };
     });
@@ -113,10 +130,11 @@ const ApiMap: React.FC = () => {
         </div>
       </div>
 
-      <div className="flex-1 relative bg-grid-pattern">
+      <div className="flex-1 relative bg-grid-pattern overflow-hidden">
         <ReactFlow
           nodes={graphData.nodes}
           edges={graphData.edges}
+          nodeTypes={nodeTypes}
           fitView
           nodesConnectable={false}
           nodesDraggable={true}
