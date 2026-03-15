@@ -126,6 +126,26 @@ class SemanticSelectionService:
         "построй",
         "собери",
     }
+    _ALIAS_EXPANSIONS = {
+        "польз": {"user", "users", "client", "clients", "пользователь", "пользователи"},
+        "клиент": {"client", "clients", "user", "users", "клиент", "клиенты"},
+        "юзер": {"user", "users", "пользователь", "пользователи"},
+        "получ": {"get", "fetch", "list", "retrieve", "получить", "список"},
+        "спис": {"list", "get", "fetch", "список", "получить"},
+        "созд": {"create", "add", "post", "создать"},
+        "обнов": {"update", "patch", "put", "обновить"},
+        "удал": {"delete", "remove", "del", "удалить"},
+        "рассыл": {"mailing", "newsletter", "broadcast", "email", "рассылка"},
+        "сегмент": {"segment", "segments", "сегмент", "сегменты"},
+        "лид": {"lead", "leads", "лид", "лиды"},
+        "отчет": {"report", "analytics", "отчет", "отчёт"},
+        "отчёт": {"report", "analytics", "отчет", "отчёт"},
+        "user": {"пользователь", "пользователи", "user", "users"},
+        "users": {"пользователь", "пользователи", "user", "users"},
+        "get": {"получить", "список", "get", "fetch", "list"},
+        "fetch": {"получить", "список", "get", "fetch", "list"},
+        "list": {"получить", "список", "get", "fetch", "list"},
+    }
 
     async def select_capabilities(
         self,
@@ -144,15 +164,46 @@ class SemanticSelectionService:
         query = query.limit(200)
         result = await session.execute(query)
         capabilities = list(result.scalars().all())
+        if owner_user_id is not None and not capabilities:
+            # Compatibility fallback for older/global capabilities created without an owner.
+            fallback_query = (
+                select(Capability)
+                .where(Capability.user_id.is_(None))
+                .order_by(Capability.created_at.asc())
+                .limit(200)
+            )
+            fallback_result = await session.execute(fallback_query)
+            capabilities = list(fallback_result.scalars().all())
+
+        executable_capabilities = [
+            capability
+            for capability in capabilities
+            if getattr(capability, "action_id", None) is not None
+        ]
+        candidates = executable_capabilities
+        if not candidates:
+            return []
+
+        query_tokens_expanded = self._expand_tokens(query_tokens)
         ranked: list[SelectedCapability] = []
-        for capability in capabilities:
-            score = self._score_capability(query_tokens, capability)
+        for capability in candidates:
+            score = self._score_capability(query_tokens, query_tokens_expanded, capability)
             if score <= 0:
                 continue
             ranked.append(SelectedCapability(capability=capability, score=score))
 
         ranked.sort(key=lambda item: item.score, reverse=True)
         if not ranked:
+            if candidates:
+                # Fallback: keep generation moving even when lexical matching is weak.
+                return [
+                    SelectedCapability(
+                        capability=capability,
+                        score=0.01,
+                        confidence_tier="medium",
+                    )
+                    for capability in candidates[:limit]
+                ]
             return []
 
         top_score = ranked[0].score
@@ -169,7 +220,12 @@ class SemanticSelectionService:
             for item in ranked[:limit]
         ]
 
-    def _score_capability(self, query_tokens: set[str], capability: Capability) -> float:
+    def _score_capability(
+        self,
+        query_tokens: set[str],
+        query_tokens_expanded: set[str],
+        capability: Capability,
+    ) -> float:
         name = str(getattr(capability, "name", "") or "")
         description = str(getattr(capability, "description", "") or "")
         name_tokens = self._tokenize(name)
@@ -178,16 +234,22 @@ class SemanticSelectionService:
         if not combined_tokens:
             return 0.0
 
-        overlap = query_tokens & combined_tokens
+        combined_tokens_expanded = self._expand_tokens(combined_tokens)
+        overlap = query_tokens_expanded & combined_tokens_expanded
         if not overlap:
             return 0.0
 
-        overlap_ratio = len(overlap) / len(query_tokens)
-        name_ratio = len(query_tokens & name_tokens) / len(query_tokens)
-        exact_bonus = 0.22 if query_tokens <= combined_tokens else 0.0
+        overlap_ratio = len(overlap) / len(query_tokens_expanded)
+        name_tokens_expanded = self._expand_tokens(name_tokens)
+        name_ratio = len(query_tokens_expanded & name_tokens_expanded) / len(query_tokens_expanded)
+        exact_bonus = 0.22 if query_tokens_expanded <= combined_tokens_expanded else 0.0
 
-        query_crm_tokens = query_tokens & self.CRM_TOKENS
-        capability_crm_tokens = combined_tokens & self.CRM_TOKENS
+        generic_expanded = self._expand_tokens(self.GENERIC_TOKENS)
+        entity_overlap = overlap - generic_expanded
+        entity_bonus = min(0.18, len(entity_overlap) * 0.06) if entity_overlap else 0.0
+
+        query_crm_tokens = query_tokens_expanded & self.CRM_TOKENS
+        capability_crm_tokens = combined_tokens_expanded & self.CRM_TOKENS
         crm_bonus = 0.0
         if query_crm_tokens and capability_crm_tokens:
             crm_overlap = len(query_crm_tokens & capability_crm_tokens)
@@ -195,7 +257,13 @@ class SemanticSelectionService:
 
         generic_penalty = self._generic_capability_penalty(combined_tokens)
 
-        return max(overlap_ratio, name_ratio * 1.12) + exact_bonus + crm_bonus - generic_penalty
+        return (
+            max(overlap_ratio, name_ratio * 1.12)
+            + exact_bonus
+            + entity_bonus
+            + crm_bonus
+            - generic_penalty
+        )
 
     def _resolve_confidence_tier(self, top_score: float, margin: float) -> str:
         if margin < self.LOW_MARGIN_THRESHOLD:
@@ -225,3 +293,53 @@ class SemanticSelectionService:
             for token in tokens
             if len(token) >= 3 and token not in self._STOPWORDS
         }
+
+    def _expand_tokens(self, tokens: set[str]) -> set[str]:
+        expanded: set[str] = set()
+        for token in tokens:
+            expanded.add(token)
+            normalized_variants = self._normalized_variants(token)
+            expanded.update(normalized_variants)
+            for variant in normalized_variants | {token}:
+                for key, aliases in self._ALIAS_EXPANSIONS.items():
+                    if variant == key or variant.startswith(key):
+                        expanded.update(aliases)
+        return expanded
+
+    def _normalized_variants(self, token: str) -> set[str]:
+        variants = {token}
+        if len(token) >= 5:
+            for suffix in (
+                "иями",
+                "ями",
+                "ами",
+                "ов",
+                "ев",
+                "ей",
+                "ам",
+                "ям",
+                "ах",
+                "ях",
+                "ые",
+                "ий",
+                "ый",
+                "ая",
+                "ое",
+                "ой",
+                "а",
+                "я",
+                "ы",
+                "и",
+                "у",
+                "ю",
+                "е",
+                "о",
+            ):
+                if token.endswith(suffix) and len(token) > len(suffix) + 2:
+                    variants.add(token[: -len(suffix)])
+
+        if token.endswith("ies") and len(token) > 4:
+            variants.add(token[:-3] + "y")
+        if token.endswith("s") and len(token) > 3:
+            variants.add(token[:-1])
+        return variants

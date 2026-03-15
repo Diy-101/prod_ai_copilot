@@ -157,17 +157,25 @@ class PipelineService:
             previous_edges=previous_edges,
         )
 
+        used_minimal_fallback = False
         try:
             raw_graph = self.generate_raw_graph(message, selected_capabilities, prompt)
         except PipelineServiceError as exc:
-            return {
-                "status": "cannot_build",
-                "message_ru": str(exc),
-                "chat_reply_ru": "Не удалось построить сценарий. Попробуйте уточнить запрос.",
-                "nodes": [],
-                "edges": [],
-                "context_summary": dialog_summary,
-            }
+            raw_graph = (
+                self._build_minimal_raw_graph(selected_capabilities)
+                if capability_ids is None
+                else None
+            )
+            if raw_graph is None:
+                return {
+                    "status": "cannot_build",
+                    "message_ru": str(exc),
+                    "chat_reply_ru": "Не удалось построить сценарий. Попробуйте уточнить запрос.",
+                    "nodes": [],
+                    "edges": [],
+                    "context_summary": dialog_summary,
+                }
+            used_minimal_fallback = True
 
         normalized_nodes, normalized_edges, normalization_issues = self._normalize_workflow(
             raw_graph, selected_capabilities
@@ -194,6 +202,41 @@ class PipelineService:
             missing = sorted(set(missing + normalization_issues))
             is_ready = False
         chat_reply = self._build_chat_reply_ru(normalized_nodes, normalized_edges)
+
+        if (
+            not is_ready
+            and not used_minimal_fallback
+            and capability_ids is None
+        ):
+            fallback_raw_graph = self._build_minimal_raw_graph(selected_capabilities)
+            if fallback_raw_graph is not None:
+                fallback_nodes, fallback_edges, fallback_issues = self._normalize_workflow(
+                    fallback_raw_graph,
+                    selected_capabilities,
+                )
+                fallback_edges = self._repair_edges_with_data_flow(
+                    fallback_nodes, fallback_edges
+                )
+                fallback_edges = self._prune_edges_for_terminal_goal(
+                    fallback_nodes, fallback_edges
+                )
+                fallback_edges = self._prune_edges_by_required_inputs(
+                    fallback_nodes, fallback_edges
+                )
+                self._sync_node_connections(fallback_nodes, fallback_edges)
+                self._ensure_external_inputs(fallback_nodes, fallback_edges)
+                fallback_ready, fallback_missing = self._validate_ready_graph(
+                    fallback_nodes, fallback_edges
+                )
+                if fallback_issues:
+                    fallback_missing = sorted(set(fallback_missing + fallback_issues))
+                    fallback_ready = False
+                if fallback_ready:
+                    normalized_nodes = fallback_nodes
+                    normalized_edges = fallback_edges
+                    missing = []
+                    is_ready = True
+                    chat_reply = self._build_chat_reply_ru(normalized_nodes, normalized_edges)
 
         if not is_ready:
             await self.dialog_memory.append_and_summarize(
@@ -251,6 +294,36 @@ class PipelineService:
             "edges": normalized_edges,
             "context_summary": dialog_summary,
         }
+
+    def _build_minimal_raw_graph(
+        self,
+        selected_capabilities: list[SelectedCapability],
+    ) -> dict[str, Any] | None:
+        for item in selected_capabilities:
+            cap = item.capability
+            cap_id = getattr(cap, "id", None)
+            action_id = getattr(cap, "action_id", None)
+            if cap_id is None or action_id is None:
+                continue
+            required_inputs = self._extract_required_inputs(
+                getattr(cap, "input_schema", None)
+            )
+            return {
+                "nodes": [
+                    {
+                        "step": 1,
+                        "name": str(getattr(cap, "name", "Step 1") or "Step 1"),
+                        "description": getattr(cap, "description", None),
+                        "capability_id": str(cap_id),
+                        "input_connected_from": [],
+                        "output_connected_to": [],
+                        "input_data_type_from_previous": [],
+                        "external_inputs": required_inputs,
+                    }
+                ],
+                "edges": [],
+            }
+        return None
 
     def generate_raw_graph(
         self,

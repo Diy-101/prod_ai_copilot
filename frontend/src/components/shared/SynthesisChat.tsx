@@ -83,16 +83,26 @@ export const SynthesisChat: React.FC<SynthesisChatProps> = ({
       let shouldLoadHistory = false;
       const storedDialogId = localStorage.getItem(storageKey);
       let dialogs: Array<{ dialog_id: string }> = [];
+      let dialogsLoaded = false;
 
       try {
         dialogs = await listPipelineDialogs(50, 0);
+        dialogsLoaded = true;
       } catch (error) {
         console.error('Unable to load dialogs list:', error);
       }
 
       if (initialDialogId) {
         activeDialogId = initialDialogId;
-        shouldLoadHistory = true;
+        // New dialog from Home has no persisted history yet, so skip history prefetch.
+        if (initialMessage) {
+          shouldLoadHistory = false;
+        } else if (dialogsLoaded) {
+          shouldLoadHistory = dialogs.some((dialog) => dialog.dialog_id === initialDialogId);
+        } else {
+          // Fallback when list loading failed: try history for existing dialogs.
+          shouldLoadHistory = true;
+        }
       } else if (
         storedDialogId &&
         dialogs.some((dialog) => dialog.dialog_id === storedDialogId)
@@ -176,7 +186,7 @@ export const SynthesisChat: React.FC<SynthesisChatProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [initialDialogId, setPipeline, storageKey]);
+  }, [initialDialogId, initialMessage, setPipeline, storageKey]);
 
   const handleSend = useCallback(
     async (overrideValue?: string) => {
