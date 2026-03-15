@@ -11,5 +11,10 @@ export const ENDPOINTS = {
   },
   PIPELINES: {
     GENERATE: `${API_BASE_URL}/pipelines/generate`,
+    RUN: (pipelineId: string) => `${API_BASE_URL}/pipelines/${pipelineId}/run`,
+  },
+  EXECUTIONS: {
+    LIST: `${API_BASE_URL}/executions`,
+    GET: (runId: string) => `${API_BASE_URL}/executions/${runId}`,
   }
 };
