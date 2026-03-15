@@ -8,21 +8,14 @@ from pydantic import BaseModel, Field
 
 class PipelineGenerateRequest(BaseModel):
     user_query: str = Field(..., min_length=1)
-
-
-class CapabilityUsedResponse(BaseModel):
-    id: UUID
-    name: str
-    score: float
-
-
-class PipelineGenerateMetaResponse(BaseModel):
-    model: str
-    prompt_version: str
-    semantic_source: str
+    dialog_id: UUID | None = None
 
 
 class PipelineGenerateResponse(BaseModel):
-    raw_graph: dict[str, Any]
-    capabilities_used: list[CapabilityUsedResponse]
-    meta: PipelineGenerateMetaResponse
+    status: str
+    message_ru: str
+    chat_reply_ru: str
+    pipeline_id: UUID | None = None
+    nodes: list[dict[str, Any]] = Field(default_factory=list)
+    edges: list[dict[str, Any]] = Field(default_factory=list)
+    context_summary: str | None = None

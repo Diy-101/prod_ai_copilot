@@ -5,14 +5,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database.session import get_session
 from app.schemas.pipeline_sch import (
-    CapabilityUsedResponse,
-    PipelineGenerateMetaResponse,
     PipelineGenerateRequest,
     PipelineGenerateResponse,
 )
-from app.services.pipeline_generation import PipelineGenerationError, PipelineGenerationService
-from app.services.pipeline_prompt_builder import PROMPT_VERSION
-from app.services.semantic_selection import SemanticSelectionService
+from app.services.pipeline_generation import PipelineGenerationService
 
 
 router = APIRouter(tags=["Pipelines"])
@@ -30,41 +26,17 @@ async def generate_pipeline_graph(
             detail="user_query must not be empty",
         )
 
-    semantic_service = SemanticSelectionService()
-    selected_capabilities = await semantic_service.select_capabilities(session, user_query=user_query, limit=5)
-    if not selected_capabilities:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No relevant capabilities found for the provided query",
-        )
+    # Используем единственную точку входа для генерации
+    generation_service = PipelineGenerationService(session)
+    
+    # Если диалог не передан, создаем временный UUID 
+    # (в реальности фронт должен присылать стабильный ID чата)
+    import uuid
+    dialog_id = request_data.dialog_id or uuid.uuid4()
 
-    generation_service = PipelineGenerationService()
-    try:
-        raw_graph = generation_service.generate_raw_graph(
-            user_query=user_query,
-            selected_capabilities=selected_capabilities,
-        )
-    except PipelineGenerationError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=str(exc),
-        ) from exc
-
-    capabilities_used = [
-        CapabilityUsedResponse(
-            id=item.capability.id,
-            name=item.capability.name,
-            score=item.score,
-        )
-        for item in selected_capabilities
-    ]
-
-    return PipelineGenerateResponse(
-        raw_graph=raw_graph,
-        capabilities_used=capabilities_used,
-        meta=PipelineGenerateMetaResponse(
-            model=generation_service.model,
-            prompt_version=PROMPT_VERSION,
-            semantic_source="semantic_selection_service",
-        ),
+    result = await generation_service.generate(
+        dialog_id=dialog_id,
+        message=user_query,
     )
+
+    return PipelineGenerateResponse(**result)
