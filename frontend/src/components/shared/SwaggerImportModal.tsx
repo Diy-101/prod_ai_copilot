@@ -14,6 +14,8 @@ import { Label } from '@/components/ui/label';
 import { FileCode, Upload, Loader2, FileJson, CheckCircle2 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
+import { apiRequest } from '@/lib/api';
+import { ENDPOINTS } from '@/constants/api';
 
 interface SwaggerImportModalProps {
   isOpen: boolean;
@@ -65,24 +67,10 @@ export const SwaggerImportModal: React.FC<SwaggerImportModalProps> = ({
       const formData = new FormData();
       // Отправляем файл напрямую как multipart/form-data
       formData.append('file', selectedFile);
-
-      const response = await fetch('/api/v1/actions/ingest', {
+      const result = await apiRequest<any>(ENDPOINTS.ACTIONS.INGEST, {
         method: 'POST',
         body: formData,
       });
-
-      if (!response.ok) {
-        let errorMessage = 'Failed to import';
-        try {
-          const errorData = await response.json();
-          errorMessage = errorData.message || errorMessage;
-        } catch (e) {
-          // Fallback if response is not JSON
-        }
-        throw new Error(errorMessage);
-      }
-
-      const result = await response.json();
       toast.success(`Файл ${selectedFile.name} успешно импортирован на сервер`);
       onImport(result, selectedFile.name);
       onClose();
@@ -106,24 +94,10 @@ export const SwaggerImportModal: React.FC<SwaggerImportModalProps> = ({
       // Создаем блоб из текста и отправляем как файл
       const specBlob = new Blob([spec], { type: 'application/json' });
       formData.append('file', specBlob, 'manual_import.json');
-
-      const response = await fetch('/api/v1/actions/ingest', {
+      const result = await apiRequest<any>(ENDPOINTS.ACTIONS.INGEST, {
         method: 'POST',
         body: formData,
       });
-
-      if (!response.ok) {
-        let errorMessage = 'Failed to import';
-        try {
-          const errorData = await response.json();
-          errorMessage = errorData.message || errorMessage;
-        } catch (e) {
-          // Fallback if response is not JSON
-        }
-        throw new Error(errorMessage);
-      }
-
-      const result = await response.json();
       toast.success('Методы успешно импортированы на сервер');
       onImport(result, 'manual_import.json');
       onClose();

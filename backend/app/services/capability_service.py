@@ -4,7 +4,7 @@ import re
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Action, Capability
@@ -100,7 +100,16 @@ class CapabilityService:
         query = select(Capability).order_by(Capability.created_at.asc())
 
         if not include_all and owner_user_id is not None:
-            query = query.where(Capability.user_id == owner_user_id)
+            # Legacy compatibility: some old rows may have user_id=NULL while action is user-owned.
+            query = query.outerjoin(Action, Capability.action_id == Action.id).where(
+                or_(
+                    Capability.user_id == owner_user_id,
+                    and_(
+                        Capability.user_id.is_(None),
+                        Action.user_id == owner_user_id,
+                    ),
+                )
+            )
 
         if capability_ids:
             query = query.where(Capability.id.in_(capability_ids))
@@ -126,7 +135,15 @@ class CapabilityService:
     ) -> Capability | None:
         query = select(Capability).where(Capability.id == capability_id)
         if not include_all and owner_user_id is not None:
-            query = query.where(Capability.user_id == owner_user_id)
+            query = query.outerjoin(Action, Capability.action_id == Action.id).where(
+                or_(
+                    Capability.user_id == owner_user_id,
+                    and_(
+                        Capability.user_id.is_(None),
+                        Action.user_id == owner_user_id,
+                    ),
+                )
+            )
         result = await self.session.execute(query)
         return result.scalar_one_or_none()
 
