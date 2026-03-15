@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 from uuid import UUID
 
@@ -39,6 +40,19 @@ class PipelineService:
         user_id: UUID | None = None,
         capability_ids: list[UUID] | None = None,
     ) -> dict[str, Any]:
+        if self._is_low_quality_message(message):
+            return {
+                "status": "needs_input",
+                "message_ru": "Запрос слишком короткий или не похож на задачу автоматизации.",
+                "chat_reply_ru": (
+                    "Опишите задачу понятнее: что получить, какие данные использовать "
+                    "и какой результат нужен."
+                ),
+                "nodes": [],
+                "edges": [],
+                "context_summary": None,
+            }
+
         if capability_ids:
             capabilities = await self.capability_service.get_capabilities(
                 capability_ids=capability_ids
@@ -87,6 +101,9 @@ class PipelineService:
 
         normalized_nodes, normalized_edges = self._normalize_workflow(
             raw_graph, selected_capabilities
+        )
+        normalized_nodes, normalized_edges = self._review_graph_with_llm(
+            normalized_nodes, normalized_edges
         )
         normalized_edges = self._repair_edges_with_data_flow(
             normalized_nodes, normalized_edges
@@ -275,6 +292,8 @@ class PipelineService:
         capabilities_by_id = {
             str(sc.capability.id): sc.capability for sc in selected_capabilities
         }
+        capabilities = [sc.capability for sc in selected_capabilities]
+        used_capability_ids: set[str] = set()
 
         raw_nodes = raw_graph.get("nodes") if isinstance(raw_graph, dict) else None
         if not isinstance(raw_nodes, list):
@@ -297,19 +316,18 @@ class PipelineService:
             step_map[raw_step] = step
 
             capability_id_raw = raw_node.get("capability_id")
-            cap = None
-            if capability_id_raw:
-                cap = capabilities_by_id.get(str(capability_id_raw))
-                if not cap:
-                    # Поиск по имени, если это новый макрос
-                    for c in capabilities_by_id.values():
-                        if c.name == capability_id_raw:
-                            cap = c
-                            break
+            cap = self._resolve_capability_for_node(
+                raw_node=raw_node,
+                capability_id=capability_id_raw,
+                capabilities=capabilities,
+                capabilities_by_id=capabilities_by_id,
+                used_capability_ids=used_capability_ids,
+            )
 
             if cap is None:
                 endpoints_payload = []
             else:
+                used_capability_ids.add(str(cap.id))
                 endpoints_payload = [
                     {
                         "name": cap.name,
@@ -377,6 +395,170 @@ class PipelineService:
             )
 
         return normalized_nodes, normalized_edges
+
+    def _review_graph_with_llm(
+        self,
+        nodes: list[dict[str, Any]],
+        edges: list[dict[str, Any]],
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        if not nodes:
+            return nodes, edges
+
+        review_prompt = (
+            "Проверь граф пайплайна и верни только JSON.\n"
+            "Не используй внешний контекст. Используй только GRAPH.\n\n"
+            "Сделай обратную проверку от финального шага к источникам.\n"
+            "Удали висящие узлы и рёбра, которые не участвуют в достижении финального шага.\n"
+            "Сохрани DAG.\n\n"
+            "Ответ строго в формате:\n"
+            "{\n"
+            "  \"keep_steps\": [1,2,3],\n"
+            "  \"edges\": [\n"
+            "    {\"from_step\": 1, \"to_step\": 2, \"type\": \"field_name\"}\n"
+            "  ]\n"
+            "}\n\n"
+            f"GRAPH:\n{json.dumps({'nodes': nodes, 'edges': edges}, ensure_ascii=False)}"
+        )
+        system_prompt = (
+            "You validate pipeline graph connectivity and sequencing. "
+            "Return ONLY valid JSON."
+        )
+
+        try:
+            payload = chat_json(system_prompt=system_prompt, user_prompt=review_prompt)
+        except Exception:
+            return nodes, edges
+
+        if not isinstance(payload, dict):
+            return nodes, edges
+
+        known_steps = {
+            step for node in nodes if isinstance((step := node.get("step")), int)
+        }
+        if not known_steps:
+            return nodes, edges
+
+        keep_steps = set(self._normalize_int_list(payload.get("keep_steps")))
+        keep_steps = keep_steps & known_steps if keep_steps else set(known_steps)
+
+        reviewed_edges = self._normalize_review_edges(payload.get("edges"), keep_steps)
+        if not reviewed_edges:
+            reviewed_edges = [
+                edge
+                for edge in edges
+                if isinstance(edge.get("from_step"), int)
+                and isinstance(edge.get("to_step"), int)
+                and edge["from_step"] in keep_steps
+                and edge["to_step"] in keep_steps
+            ]
+
+        reviewed_nodes = [
+            node
+            for node in nodes
+            if isinstance(node.get("step"), int) and node["step"] in keep_steps
+        ]
+        return reviewed_nodes, reviewed_edges
+
+    def _normalize_review_edges(
+        self,
+        raw_edges: Any,
+        keep_steps: set[int],
+    ) -> list[dict[str, Any]]:
+        if not isinstance(raw_edges, list):
+            return []
+
+        result: list[dict[str, Any]] = []
+        seen: set[tuple[int, int, str]] = set()
+        for edge in raw_edges:
+            if not isinstance(edge, dict):
+                continue
+            src = edge.get("from_step")
+            dst = edge.get("to_step")
+            edge_type = edge.get("type")
+            if not isinstance(src, int) or not isinstance(dst, int):
+                continue
+            if src not in keep_steps or dst not in keep_steps:
+                continue
+            if not isinstance(edge_type, str) or not edge_type.strip():
+                continue
+            key = (src, dst, edge_type.strip())
+            if key in seen:
+                continue
+            seen.add(key)
+            result.append(
+                {
+                    "from_step": src,
+                    "to_step": dst,
+                    "type": edge_type.strip(),
+                }
+            )
+        return result
+
+    def _resolve_capability_for_node(
+        self,
+        *,
+        raw_node: dict[str, Any],
+        capability_id: Any,
+        capabilities: list[Any],
+        capabilities_by_id: dict[str, Any],
+        used_capability_ids: set[str],
+    ) -> Any | None:
+        if capability_id:
+            by_id = capabilities_by_id.get(str(capability_id))
+            if by_id is not None:
+                return by_id
+            for cap in capabilities:
+                if str(getattr(cap, "name", "")) == str(capability_id):
+                    return cap
+
+        hints = [
+            str(raw_node.get("name") or ""),
+            str(raw_node.get("description") or ""),
+        ]
+        endpoints_raw = raw_node.get("endpoints")
+        if isinstance(endpoints_raw, list):
+            for endpoint in endpoints_raw:
+                if isinstance(endpoint, dict):
+                    hints.append(str(endpoint.get("name") or ""))
+
+        best_cap = None
+        best_score = 0.0
+        for cap in capabilities:
+            cap_name = str(getattr(cap, "name", "") or "")
+            cap_desc = str(getattr(cap, "description", "") or "")
+            score = self._best_hint_score(hints, cap_name, cap_desc)
+            if score > best_score:
+                best_score = score
+                best_cap = cap
+
+        if best_cap is not None and best_score > 0:
+            return best_cap
+
+        for cap in capabilities:
+            if str(getattr(cap, "id", "")) not in used_capability_ids:
+                return cap
+
+        return capabilities[0] if capabilities else None
+
+    def _best_hint_score(self, hints: list[str], cap_name: str, cap_desc: str) -> float:
+        cap_name_tokens = self._tokenize_text(cap_name)
+        cap_desc_tokens = self._tokenize_text(cap_desc)
+        if not cap_name_tokens and not cap_desc_tokens:
+            return 0.0
+
+        best = 0.0
+        for hint in hints:
+            hint_tokens = self._tokenize_text(hint)
+            if not hint_tokens:
+                continue
+            overlap_name = len(hint_tokens & cap_name_tokens) / max(len(hint_tokens), 1)
+            overlap_desc = len(hint_tokens & cap_desc_tokens) / max(len(hint_tokens), 1)
+            score = max(overlap_name, overlap_desc)
+            if hint_tokens and hint_tokens == cap_name_tokens:
+                score = max(score, 1.0)
+            best = max(best, score)
+
+        return best
 
     def _repair_edges_with_data_flow(
         self,
@@ -473,6 +655,50 @@ class PipelineService:
             if isinstance(edge_type, str) and edge_type in required_inputs:
                 filtered.append(edge)
         return filtered
+
+    def _prune_disconnected_nodes(
+        self,
+        nodes: list[dict[str, Any]],
+        edges: list[dict[str, Any]],
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        if len(nodes) <= 1:
+            return nodes, edges
+
+        steps = [n.get("step") for n in nodes if isinstance(n.get("step"), int)]
+        if not steps:
+            return nodes, edges
+
+        connected_steps: set[int] = set()
+        for edge in edges:
+            src = edge.get("from_step")
+            dst = edge.get("to_step")
+            if isinstance(src, int):
+                connected_steps.add(src)
+            if isinstance(dst, int):
+                connected_steps.add(dst)
+
+        if connected_steps:
+            keep_steps = connected_steps
+        else:
+            # No usable data-flow edges: keep only one primary step
+            # to avoid returning multiple hanging nodes.
+            keep_steps = {max(steps)}
+
+        pruned_nodes = [
+            node
+            for node in nodes
+            if isinstance(node.get("step"), int) and node["step"] in keep_steps
+        ]
+        pruned_edges = [
+            edge
+            for edge in edges
+            if isinstance(edge.get("from_step"), int)
+            and isinstance(edge.get("to_step"), int)
+            and edge["from_step"] in keep_steps
+            and edge["to_step"] in keep_steps
+        ]
+
+        return pruned_nodes, pruned_edges
 
     def _ensure_external_inputs(
         self,
@@ -593,6 +819,51 @@ class PipelineService:
     def _build_pipeline_name(self, message: str) -> str:
         cleaned = message.strip().split("\n", 1)[0]
         return cleaned[:120] if cleaned else "Generated pipeline"
+
+    def _is_low_quality_message(self, message: str) -> bool:
+        normalized = (message or "").strip().lower()
+        if not normalized:
+            return True
+
+        tokens = self._tokenize_text(normalized)
+        if not tokens:
+            return True
+
+        explicit_noise = {"писяпопа", "asdf", "qwerty", "лол", "хз", "test", "тест"}
+        if any(token in explicit_noise for token in tokens):
+            return True
+
+        intent_markers = {
+            "сдел",
+            "получ",
+            "отправ",
+            "найд",
+            "сегмент",
+            "собер",
+            "рассыл",
+            "обнов",
+            "созд",
+            "удал",
+            "assign",
+            "send",
+            "segment",
+            "build",
+            "get",
+            "email",
+            "user",
+            "hotel",
+            "pipeline",
+        }
+        has_intent = any(marker in normalized for marker in intent_markers)
+        if len(tokens) == 1 and not has_intent:
+            return True
+        if len(tokens) <= 2 and not has_intent and len(normalized) < 18:
+            return True
+        return False
+
+    def _tokenize_text(self, value: str) -> set[str]:
+        tokens = set(re.findall(r"[a-zA-Zа-яА-Я0-9]+", value.lower()))
+        return {token for token in tokens if len(token) >= 3}
 
     def _extract_primary_type(self, node: dict[str, Any], field: str) -> str | None:
         endpoints = node.get("endpoints") or []
