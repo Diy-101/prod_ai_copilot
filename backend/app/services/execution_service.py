@@ -4,6 +4,7 @@ import asyncio
 import json
 import os
 import re
+from urllib.parse import urlparse
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -556,9 +557,14 @@ class ExecutionService:
             else:
                 missing_required.append(path_param)
 
-        if not action.base_url:
+        path_is_absolute_url = self._is_absolute_url(path)
+        base_url = self._resolve_action_base_url(action)
+        if not path_is_absolute_url and not base_url:
             missing_required.append("__base_url__")
-        url = self._join_url(action.base_url or "", path)
+        if path_is_absolute_url:
+            url = path
+        else:
+            url = self._join_url(base_url or "", path)
 
         content_type = body_schema.get("x-content-type")
         if isinstance(content_type, str) and body is not None:
@@ -582,6 +588,88 @@ class ExecutionService:
                 "json_body": body,
             },
         }
+
+    def _resolve_action_base_url(self, action: Action) -> str | None:
+        fallback_base_url = os.getenv("EXECUTION_DEFAULT_BASE_URL")
+        fallback_normalized = self._normalize_base_url(fallback_base_url)
+
+        base_url = self._normalize_base_url(getattr(action, "base_url", None))
+        resolved_base_url = self._resolve_base_url_with_fallback(
+            candidate=base_url,
+            fallback=fallback_normalized,
+        )
+        if resolved_base_url:
+            return resolved_base_url
+
+        raw_spec = getattr(action, "raw_spec", None)
+        if isinstance(raw_spec, dict):
+            servers = raw_spec.get("servers")
+            if isinstance(servers, list):
+                for server in servers:
+                    candidate = self._resolve_server_url(server)
+                    resolved = self._resolve_base_url_with_fallback(
+                        candidate=candidate,
+                        fallback=fallback_normalized,
+                    )
+                    if resolved:
+                        return resolved
+
+        if fallback_normalized:
+            return fallback_normalized
+
+        return None
+
+    def _resolve_server_url(self, server: Any) -> str | None:
+        if not isinstance(server, dict):
+            return None
+        raw_url = server.get("url")
+        if not isinstance(raw_url, str):
+            return None
+        url = raw_url.strip()
+        if not url:
+            return None
+
+        variables = server.get("variables")
+        if isinstance(variables, dict):
+            for variable_name, variable_payload in variables.items():
+                placeholder = f"{{{variable_name}}}"
+                if placeholder not in url:
+                    continue
+                default_value: str | None = None
+                if isinstance(variable_payload, dict):
+                    raw_default = variable_payload.get("default")
+                    if isinstance(raw_default, str):
+                        default_value = raw_default.strip()
+                if default_value:
+                    url = url.replace(placeholder, default_value)
+
+        return self._normalize_base_url(url)
+
+    def _resolve_base_url_with_fallback(
+        self,
+        *,
+        candidate: str | None,
+        fallback: str | None,
+    ) -> str | None:
+        if not candidate:
+            return fallback
+        if self._is_absolute_url(candidate):
+            return candidate
+        if fallback:
+            return self._join_url(fallback, candidate)
+        return None
+
+    @staticmethod
+    def _normalize_base_url(value: Any) -> str | None:
+        if not isinstance(value, str):
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @staticmethod
+    def _is_absolute_url(value: str) -> bool:
+        parsed = urlparse(str(value or ""))
+        return bool(parsed.scheme and parsed.netloc)
 
     async def _call_action(
         self,
@@ -933,6 +1021,8 @@ class ExecutionService:
 
     @staticmethod
     def _join_url(base_url: str, path: str) -> str:
+        if ExecutionService._is_absolute_url(path):
+            return path
         if not base_url:
             return path
         base = base_url.rstrip("/")

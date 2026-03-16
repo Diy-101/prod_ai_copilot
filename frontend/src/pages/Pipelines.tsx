@@ -795,6 +795,7 @@ export const Pipelines: React.FC = () => {
             className="flex-shrink-0"
           >
             <SynthesisChat
+              key={dialogId || 'active-dialog'}
               className="w-full h-full"
               initialMessage={initialMessage}
               initialDialogId={dialogId}

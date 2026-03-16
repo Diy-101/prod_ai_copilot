@@ -960,19 +960,28 @@ class PipelineService:
 
         normalized_nodes: list[dict[str, Any]] = []
         step_map: dict[Any, int] = {}
+        known_steps: set[int] = set()
         next_step = 1
 
         for raw_node in raw_nodes:
             if not isinstance(raw_node, dict):
                 continue
 
-            raw_step = raw_node.get("step") or raw_node.get("id")
-            if isinstance(raw_step, int):
-                step = raw_step
-            else:
+            raw_step = raw_node.get("step")
+            raw_id = raw_node.get("id")
+            step = self._resolve_step_reference(raw_step, step_map=step_map, known_steps=known_steps)
+            if step is None:
+                step = self._resolve_step_reference(raw_id, step_map=step_map, known_steps=known_steps)
+            if step is None:
+                while next_step in known_steps:
+                    next_step += 1
                 step = next_step
                 next_step += 1
-            step_map[raw_step] = step
+
+            known_steps.add(step)
+            self._register_step_alias(step_map, raw_step, step)
+            self._register_step_alias(step_map, raw_id, step)
+            self._register_step_alias(step_map, step, step)
 
             capability_id_raw = raw_node.get("capability_id")
             cap = self._resolve_capability_for_node(
@@ -1035,19 +1044,17 @@ class PipelineService:
         for raw_edge in raw_edges:
             if not isinstance(raw_edge, dict):
                 continue
-            from_step = (
+            from_ref = (
                 raw_edge.get("from_step")
                 or raw_edge.get("from")
                 or raw_edge.get("source")
             )
-            to_step = (
+            to_ref = (
                 raw_edge.get("to_step") or raw_edge.get("to") or raw_edge.get("target")
             )
             edge_type = raw_edge.get("type")
-            if from_step in step_map:
-                from_step = step_map[from_step]
-            if to_step in step_map:
-                to_step = step_map[to_step]
+            from_step = self._resolve_step_reference(from_ref, step_map=step_map, known_steps=known_steps)
+            to_step = self._resolve_step_reference(to_ref, step_map=step_map, known_steps=known_steps)
             if not isinstance(from_step, int) or not isinstance(to_step, int):
                 continue
             if not isinstance(edge_type, str) or not edge_type.strip():
@@ -1176,15 +1183,139 @@ class PipelineService:
         capabilities: list[Any],
         capabilities_by_id: dict[str, Any],
     ) -> Any | None:
-        if capability_id:
+        has_explicit_capability_ref = (
+            capability_id is not None and str(capability_id).strip() != ""
+        )
+        if has_explicit_capability_ref:
             by_id = capabilities_by_id.get(str(capability_id))
             if by_id is not None:
                 return by_id
-            for cap in capabilities:
-                if str(getattr(cap, "name", "")) == str(capability_id):
-                    return cap
+            by_alias = self._match_capability_by_alias(capabilities, str(capability_id))
+            if by_alias is not None:
+                return by_alias
 
-        # Strict mode: no fuzzy mapping to avoid accidental capability substitutions.
+        for lookup_value in self._collect_node_capability_hints(raw_node):
+            matched = self._match_capability_by_alias(capabilities, lookup_value)
+            if matched is not None:
+                return matched
+
+        if len(capabilities) == 1 and not has_explicit_capability_ref:
+            return capabilities[0]
+
+        return None
+
+    def _collect_node_capability_hints(self, raw_node: dict[str, Any]) -> list[str]:
+        hints: list[str] = []
+        for key in ("name", "description", "title", "operation_id", "action_id"):
+            value = raw_node.get(key)
+            if isinstance(value, str) and value.strip():
+                hints.append(value.strip())
+
+        endpoints = raw_node.get("endpoints")
+        if isinstance(endpoints, list):
+            for endpoint in endpoints:
+                if not isinstance(endpoint, dict):
+                    continue
+                for key in ("name", "description", "summary", "operation_id", "action_id", "path"):
+                    value = endpoint.get(key)
+                    if isinstance(value, str) and value.strip():
+                        hints.append(value.strip())
+
+        return hints
+
+    def _match_capability_by_alias(self, capabilities: list[Any], lookup_value: str) -> Any | None:
+        query = str(lookup_value or "").strip()
+        if not query:
+            return None
+
+        lowered = query.lower()
+        normalized_query = self._normalize_lookup_token(query)
+        strong_matches: list[Any] = []
+        normalized_matches: list[Any] = []
+        fuzzy_matches: list[Any] = []
+
+        for capability in capabilities:
+            aliases = self._collect_capability_aliases(capability)
+            for alias in aliases:
+                alias_lower = alias.lower()
+                if alias_lower == lowered:
+                    strong_matches.append(capability)
+                    break
+
+            if capability in strong_matches:
+                continue
+
+            for alias in aliases:
+                alias_normalized = self._normalize_lookup_token(alias)
+                if normalized_query and alias_normalized == normalized_query:
+                    normalized_matches.append(capability)
+                    break
+
+            if capability in normalized_matches:
+                continue
+
+            if len(normalized_query) >= 4:
+                for alias in aliases:
+                    alias_normalized = self._normalize_lookup_token(alias)
+                    if not alias_normalized:
+                        continue
+                    if normalized_query in alias_normalized or alias_normalized in normalized_query:
+                        fuzzy_matches.append(capability)
+                        break
+
+        unique_strong = self._single_or_none(strong_matches)
+        if unique_strong is not None:
+            return unique_strong
+
+        unique_normalized = self._single_or_none(normalized_matches)
+        if unique_normalized is not None:
+            return unique_normalized
+
+        return self._single_or_none(fuzzy_matches)
+
+    def _collect_capability_aliases(self, capability: Any) -> list[str]:
+        aliases: list[str] = []
+        seen: set[str] = set()
+
+        def add_alias(raw_value: Any) -> None:
+            if raw_value is None:
+                return
+            value = str(raw_value).strip()
+            if not value:
+                return
+            key = value.lower()
+            if key in seen:
+                return
+            seen.add(key)
+            aliases.append(value)
+
+        add_alias(getattr(capability, "id", None))
+        add_alias(getattr(capability, "name", None))
+        add_alias(getattr(capability, "description", None))
+        add_alias(getattr(capability, "action_id", None))
+
+        action_context = self._extract_capability_action_context(capability)
+        if isinstance(action_context, dict):
+            add_alias(action_context.get("operation_id"))
+            add_alias(action_context.get("path"))
+            add_alias(action_context.get("summary"))
+            add_alias(action_context.get("description"))
+            method = action_context.get("method")
+            path = action_context.get("path")
+            if isinstance(method, str) and isinstance(path, str):
+                add_alias(f"{method} {path}")
+
+        return aliases
+
+    def _normalize_lookup_token(self, value: Any) -> str:
+        return re.sub(r"[^a-zа-я0-9]+", "", str(value or "").lower())
+
+    def _single_or_none(self, items: list[Any]) -> Any | None:
+        if not items:
+            return None
+        first = items[0]
+        if all(candidate is first for candidate in items):
+            return first
         return None
 
     def _repair_edges_with_data_flow(
@@ -1286,21 +1417,36 @@ class PipelineService:
             if explicit_types:
                 explicit_by_step[step] = explicit_types
 
-        filtered: list[dict[str, Any]] = []
+        edges_by_target: dict[int, list[dict[str, Any]]] = {}
+        passthrough_edges: list[dict[str, Any]] = []
         for edge in edges:
             to_step = edge.get("to_step")
-            edge_type = edge.get("type")
-            if not isinstance(to_step, int):
-                continue
-            if not isinstance(edge_type, str):
-                continue
+            if isinstance(to_step, int):
+                edges_by_target.setdefault(to_step, []).append(edge)
+            else:
+                passthrough_edges.append(edge)
+
+        filtered: list[dict[str, Any]] = []
+        for to_step, target_edges in edges_by_target.items():
             required_inputs = required_by_step.get(to_step, set())
             explicit_types = explicit_by_step.get(to_step, set())
             if not required_inputs and not explicit_types:
-                filtered.append(edge)
+                filtered.extend(target_edges)
                 continue
-            if edge_type in required_inputs or edge_type in explicit_types:
-                filtered.append(edge)
+
+            matched_edges = [
+                edge
+                for edge in target_edges
+                if self._edge_matches_expected_inputs(
+                    edge_type=edge.get("type"),
+                    required_inputs=required_inputs,
+                    explicit_types=explicit_types,
+                )
+            ]
+            # Keep original edges if aliases did not match any schema field.
+            filtered.extend(matched_edges if matched_edges else target_edges)
+
+        filtered.extend(passthrough_edges)
         return filtered
 
     def _prune_disconnected_nodes(
@@ -1367,7 +1513,7 @@ class PipelineService:
             external_inputs = set(self._normalize_str_list(node.get("external_inputs")))
             incoming_types = edges_by_target.get(step, set())
             for required_input in required_inputs:
-                if required_input in incoming_types:
+                if self._is_input_satisfied_by_values(required_input, incoming_types):
                     continue
                 external_inputs.add(required_input)
             node["external_inputs"] = sorted(external_inputs)
@@ -1412,7 +1558,11 @@ class PipelineService:
         edges: list[dict[str, Any]],
     ) -> tuple[bool, list[str]]:
         missing: list[str] = []
-        missing.extend(self._collect_graph_structure_issues(nodes, edges))
+        structure_issues = self._collect_graph_structure_issues(nodes, edges)
+        # Multiple sink nodes are valid for fan-out scenarios and should not block execution.
+        missing.extend(
+            issue for issue in structure_issues if issue != "graph:ambiguous_terminal"
+        )
         edges_by_target: dict[int, set[str]] = {}
         for edge in edges:
             to_step = edge.get("to_step")
@@ -1444,9 +1594,9 @@ class PipelineService:
             external_inputs = set(self._normalize_str_list(node.get("external_inputs")))
             incoming_types = edges_by_target.get(step, set())
             for required_input in required_inputs:
-                if required_input in external_inputs:
+                if self._is_input_satisfied_by_values(required_input, external_inputs):
                     continue
-                if required_input in incoming_types:
+                if self._is_input_satisfied_by_values(required_input, incoming_types):
                     continue
                 missing.append(f"node_{step}: missing_input:{required_input}")
 
@@ -1648,6 +1798,54 @@ class PipelineService:
             return [str(item) for item in required if item]
         return []
 
+    def _edge_matches_expected_inputs(
+        self,
+        *,
+        edge_type: Any,
+        required_inputs: set[str],
+        explicit_types: set[str],
+    ) -> bool:
+        if not isinstance(edge_type, str):
+            return False
+        if not required_inputs and not explicit_types:
+            return True
+        for expected in required_inputs | explicit_types:
+            if self._field_alias_matches(edge_type=edge_type, expected_input=expected):
+                return True
+        return False
+
+    def _is_input_satisfied_by_values(
+        self,
+        required_input: str,
+        candidate_values: set[str],
+    ) -> bool:
+        for candidate in candidate_values:
+            if self._field_alias_matches(edge_type=candidate, expected_input=required_input):
+                return True
+        return False
+
+    def _field_alias_matches(self, *, edge_type: str, expected_input: str) -> bool:
+        left = str(edge_type).strip()
+        right = str(expected_input).strip()
+        if not left or not right:
+            return False
+        if left == right:
+            return True
+
+        left_base = left[:-2] if left.endswith("[]") else left
+        right_base = right[:-2] if right.endswith("[]") else right
+        if left_base == right_base:
+            return True
+
+        left_normalized = self._normalize_lookup_token(left_base)
+        right_normalized = self._normalize_lookup_token(right_base)
+        if left_normalized and right_normalized and left_normalized == right_normalized:
+            return True
+
+        left_tokens = self._tokenize_field_name(left_base)
+        right_tokens = self._tokenize_field_name(right_base)
+        return bool(left_tokens and right_tokens and left_tokens == right_tokens)
+
     def _extract_required_inputs_from_node(self, node: dict[str, Any]) -> list[str]:
         endpoints = node.get("endpoints") or []
         if not endpoints:
@@ -1666,6 +1864,11 @@ class PipelineService:
         for item in value:
             if isinstance(item, int):
                 result.append(item)
+                continue
+            if isinstance(item, str):
+                stripped = item.strip()
+                if stripped.lstrip("-").isdigit():
+                    result.append(int(stripped))
         return result
 
     def _normalize_input_data_types(self, value: Any) -> list[dict[str, Any]]:
@@ -1677,9 +1880,69 @@ class PipelineService:
                 continue
             from_step = item.get("from_step") or item.get("step")
             edge_type = item.get("type") or item.get("output") or item.get("data_type")
-            if isinstance(from_step, int) and isinstance(edge_type, str):
-                result.append({"from_step": from_step, "type": edge_type})
+            normalized_from_step: int | None = None
+            if isinstance(from_step, int):
+                normalized_from_step = from_step
+            elif isinstance(from_step, str):
+                stripped = from_step.strip()
+                if stripped.lstrip("-").isdigit():
+                    normalized_from_step = int(stripped)
+            if normalized_from_step is not None and isinstance(edge_type, str):
+                result.append({"from_step": normalized_from_step, "type": edge_type})
         return result
+
+    def _register_step_alias(self, step_map: dict[Any, int], alias: Any, step: int) -> None:
+        if alias is None:
+            return
+        step_map[alias] = step
+        if isinstance(alias, str):
+            stripped = alias.strip()
+            if stripped:
+                step_map[stripped] = step
+                if stripped.lstrip("-").isdigit():
+                    step_map[int(stripped)] = step
+                step_map[stripped.lower()] = step
+        if isinstance(alias, int):
+            step_map[str(alias)] = step
+
+    def _resolve_step_reference(
+        self,
+        raw_ref: Any,
+        *,
+        step_map: dict[Any, int],
+        known_steps: set[int],
+    ) -> int | None:
+        if isinstance(raw_ref, int):
+            if raw_ref in known_steps:
+                return raw_ref
+            mapped = step_map.get(raw_ref)
+            if isinstance(mapped, int):
+                return mapped
+            return raw_ref
+
+        if isinstance(raw_ref, str):
+            stripped = raw_ref.strip()
+            if not stripped:
+                return None
+            mapped = step_map.get(stripped)
+            if isinstance(mapped, int):
+                return mapped
+            mapped = step_map.get(stripped.lower())
+            if isinstance(mapped, int):
+                return mapped
+            if stripped.lstrip("-").isdigit():
+                numeric = int(stripped)
+                if numeric in known_steps:
+                    return numeric
+                mapped = step_map.get(numeric)
+                if isinstance(mapped, int):
+                    return mapped
+                return numeric
+
+        mapped = step_map.get(raw_ref)
+        if isinstance(mapped, int):
+            return mapped
+        return None
 
     def _normalize_str_list(self, value: Any) -> list[str]:
         if not isinstance(value, list):
