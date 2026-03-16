@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { LogIn, Loader2 } from "lucide-react";
+import { LogIn, Loader2, Shield, User } from "lucide-react";
 import { toast } from "sonner";
 
 import { useAuth } from "@/contexts/AuthContext";
@@ -20,8 +20,33 @@ const Login: React.FC = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const { login } = useAuth();
+  const { login, register } = useAuth();
   const navigate = useNavigate();
+
+  const handleQuickAuth = async (email: string, pass: string, name: string) => {
+    setIsLoading(true);
+    try {
+      // Try login first
+      try {
+        await login(email, pass);
+        toast.success(`Logged in as ${name}`);
+        navigate("/");
+        return;
+      } catch (loginError: any) {
+        // If login fails (user likely doesn't exist), try register
+        try {
+          await register(email, name, pass);
+          toast.success(`Registered and logged in as ${name}`);
+          navigate("/");
+        } catch (regError: any) {
+          // If register also fails, show error
+          toast.error(regError.message || `Failed to authenticate as ${name}`);
+        }
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -99,6 +124,40 @@ const Login: React.FC = () => {
               {isLoading ? "Signing in..." : "Sign In"}
             </Button>
           </form>
+
+          <div className="relative my-6">
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t border-border" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-card px-2 text-muted-foreground font-medium">
+                Quick Access
+              </span>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <Button
+              variant="outline"
+              type="button"
+              className="w-full h-11 gap-2 border-primary/20 hover:border-primary/50 hover:bg-primary/5 group transition-all duration-300"
+              onClick={() => handleQuickAuth("admin@example.com", "adminadmin1", "Admin")}
+              disabled={isLoading}
+            >
+              <Shield className="h-4 w-4 text-primary group-hover:scale-110 transition-transform" />
+              <span className="font-medium">Войти как Admin</span>
+            </Button>
+            <Button
+              variant="outline"
+              type="button"
+              className="w-full h-11 gap-2 border-border hover:bg-muted group transition-all duration-300"
+              onClick={() => handleQuickAuth("user@example.com", "useruser1", "User")}
+              disabled={isLoading}
+            >
+              <User className="h-4 w-4 group-hover:scale-110 transition-transform" />
+              <span className="font-medium">Войти как User</span>
+            </Button>
+          </div>
         </CardContent>
         <CardFooter className="flex flex-col space-y-4">
           <div className="text-center text-sm text-muted-foreground">
