@@ -16,7 +16,8 @@ import { generateUUID, cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const Home: React.FC = () => {
-  const { addActions, addCapabilities } = useActionsContext();
+  const { addActions, addCapabilities, capabilities } = useActionsContext();
+  const isChatDisabled = capabilities.length === 0;
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isResultsModalOpen, setIsResultsModalOpen] = useState(false);
   const [importResults, setImportResults] = useState<{ succeeded_actions: Action[], failed_actions: any[] } | null>(null);
@@ -112,23 +113,40 @@ const Home: React.FC = () => {
               )}
             </AnimatePresence>
 
-            <div className="relative flex items-center">
-              <Input
-                value={chatMessage}
-                onChange={(e) => setChatMessage(e.target.value)}
-                placeholder={importedFiles.length > 0 ? "Сценарий готов к постройке..." : "Как я могу помочь вам с вашими API сегодня?"}
-                className="bg-transparent border-none shadow-none h-12 pl-4 pr-16 text-lg focus-visible:ring-0"
-              />
-              <div className="absolute right-0 top-1/2 -translate-y-1/2">
-                <Button
-                  type="submit"
-                  size="icon"
-                  className="h-10 w-10 rounded-xl transition-transform active:scale-95 bg-primary hover:bg-primary/90"
-                >
-                  <Send className="h-5 w-5" />
-                </Button>
-              </div>
-            </div>
+            <Tooltip delayDuration={300}>
+              <TooltipTrigger asChild>
+                <div className={cn("relative flex items-center", isChatDisabled && "cursor-not-allowed")}>
+                  <Input
+                    value={chatMessage}
+                    onChange={(e) => setChatMessage(e.target.value)}
+                    placeholder={capabilities.length > 0 ? "Сценарий готов к постройке..." : "Загрузите Swagger для начала работы"}
+                    className={cn(
+                      "bg-transparent border-none shadow-none h-12 pl-4 pr-16 text-lg focus-visible:ring-0",
+                      isChatDisabled && "opacity-50 pointer-events-none"
+                    )}
+                    disabled={isChatDisabled}
+                  />
+                  <div className="absolute right-0 top-1/2 -translate-y-1/2">
+                    <Button
+                      type="submit"
+                      size="icon"
+                      className={cn(
+                        "h-10 w-10 rounded-xl transition-transform active:scale-95 bg-primary hover:bg-primary/90",
+                        isChatDisabled && "opacity-50 pointer-events-none"
+                      )}
+                      disabled={isChatDisabled}
+                    >
+                      <Send className="h-5 w-5" />
+                    </Button>
+                  </div>
+                </div>
+              </TooltipTrigger>
+              {isChatDisabled && (
+                <TooltipContent side="top" sideOffset={10} className="bg-card/95 backdrop-blur-md border-border shadow-xl">
+                  <p className="text-sm font-medium">Сначала загрузите Swagger спецификацию</p>
+                </TooltipContent>
+              )}
+            </Tooltip>
           </form>
           <div className="flex flex-wrap items-center justify-center gap-4 mt-6">
             <Button
