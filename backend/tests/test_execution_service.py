@@ -213,6 +213,21 @@ def test_resolve_node_inputs_prefers_edge_values_over_step_outputs():
     assert missing == []
 
 
+def test_resolve_node_inputs_normalizes_array_suffix_edge_types():
+    service = ExecutionService(session=None)  # type: ignore[arg-type]
+    resolved, missing = service._resolve_node_inputs(
+        node={"step": 3, "external_inputs": []},
+        incoming_edges=[{"from_step": 1, "to_step": 3, "type": "users[]"}],
+        step_outputs={"1": {"users": [{"id": 1}]}},
+        edge_values={},
+        run_inputs={},
+    )
+
+    assert resolved["users[]"] == [{"id": 1}]
+    assert resolved["users"] == [{"id": 1}]
+    assert missing == []
+
+
 @pytest.mark.asyncio
 async def test_execute_run_linear_pipeline_succeeds_and_persists_context():
     run_id = uuid4()
