@@ -218,28 +218,28 @@ const getStepStatusMeta = (status: ExecutionStepStatus | undefined) => {
   if (status === 'SUCCEEDED') {
     return {
       label: 'SUCCEEDED',
-      cardClass: 'border-emerald-500/40 bg-emerald-500/5',
+      cardClass: 'border-emerald-500/40 bg-emerald-500/10',
       badgeClass: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700',
     };
   }
   if (status === 'FAILED') {
     return {
       label: 'FAILED',
-      cardClass: 'border-red-500/40 bg-red-500/5',
+      cardClass: 'border-red-500/40 bg-red-500/10',
       badgeClass: 'border-red-500/40 bg-red-500/10 text-red-700',
     };
   }
   if (status === 'RUNNING') {
     return {
       label: 'RUNNING',
-      cardClass: 'border-blue-500/40 bg-blue-500/5 ring-1 ring-blue-500/20',
+      cardClass: 'border-blue-500/40 bg-blue-500/10 ring-1 ring-blue-500/20',
       badgeClass: 'border-blue-500/40 bg-blue-500/10 text-blue-700',
     };
   }
   if (status === 'SKIPPED') {
     return {
       label: 'SKIPPED',
-      cardClass: 'border-amber-500/40 bg-amber-500/5',
+      cardClass: 'border-amber-500/40 bg-amber-500/10',
       badgeClass: 'border-amber-500/40 bg-amber-500/10 text-amber-700',
     };
   }
@@ -492,12 +492,12 @@ export const Pipelines: React.FC = () => {
                     key={node.step}
                     layout
                     initial={false}
-                    animate={{ 
+                    animate={{
                       height: isExpanded ? 'auto' : CARD_HEIGHT,
                       zIndex: isExpanded ? 50 : 10
                     }}
                     className={cn(
-                      "absolute border border-primary/20 bg-card shadow-lg rounded-xl overflow-hidden cursor-pointer transition-colors hover:border-primary/40",
+                      "absolute border border-primary/20 bg-card/60 backdrop-blur-md shadow-lg rounded-xl overflow-hidden cursor-pointer transition-colors hover:border-primary/40",
                       stepStatusMeta.cardClass,
                       isExpanded ? "shadow-2xl ring-1 ring-primary/10" : "shadow-md"
                     )}
@@ -666,7 +666,7 @@ export const Pipelines: React.FC = () => {
             </Card>
           )}
 
-          <Card className="mt-20 p-6 bg-primary/5 border-dashed border-primary/20 space-y-6">
+          <Card className="mt-20 p-6 bg-primary/10 border-dashed border-primary/20 space-y-6">
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-4">
                 <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
