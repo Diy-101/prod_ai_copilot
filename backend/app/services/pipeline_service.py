@@ -446,6 +446,74 @@ class PipelineService:
         parts.extend(chunk for chunk in recent_chunks if chunk)
         return "\n".join(part for part in parts if part)
 
+    def _count_low_confidence_questions(
+        self, dialog_messages: list[dict[str, Any]]
+    ) -> int:
+        count = 0
+        for msg in dialog_messages:
+            if msg.get("role") == "assistant":
+                content = str(msg.get("content") or "")
+                if self.LOW_CONFIDENCE_DIALOG_MARKER in content:
+                    count += 1
+        return count
+
+    def _strip_low_confidence_marker(self, text: str) -> str:
+        if not text:
+            return ""
+        return text.replace(self.LOW_CONFIDENCE_DIALOG_MARKER, "").strip()
+
+    def _attach_low_confidence_marker(self, text: str) -> str:
+        return f"{text}\n\n{self.LOW_CONFIDENCE_DIALOG_MARKER}"
+
+    def _selection_is_low_confidence(
+        self, selected_capabilities: list[SelectedCapability]
+    ) -> bool:
+        if not selected_capabilities:
+            return True
+        # If all matches are low confidence, we need clarification.
+        return all(sc.confidence_tier == "low" for sc in selected_capabilities)
+
+    def _build_low_confidence_question_ru(
+        self,
+        *,
+        question_number: int,
+        message: str,
+        dialog_messages: list[dict[str, Any]],
+        selected_capabilities: list[SelectedCapability],
+    ) -> str:
+        # LLM based question if possible, fallback to template.
+        llm_question = self._generate_clarification_question_ru(
+            message=message,
+            dialog_messages=dialog_messages,
+            selected_capabilities=selected_capabilities,
+        )
+        if llm_question:
+            return llm_question
+
+        if question_number >= 2:
+            required_fields = set()
+            for sc in selected_capabilities:
+                required = self._extract_required_inputs(sc.capability.input_schema)
+                required_fields.update(required)
+            if required_fields:
+                fields_str = ", ".join(sorted(required_fields))
+                return f"Мне не хватает данных для точного сценария. Пожалуйста, укажите: {fields_str}."
+
+        return (
+            "Я не уверен, как правильно собрать этот сценарий. "
+            "Опишите подробнее, что именно вы хотите получить в итоге."
+        )
+
+    def _generate_clarification_question_ru(
+        self,
+        *,
+        message: str,
+        dialog_messages: list[dict[str, Any]],
+        selected_capabilities: list[SelectedCapability],
+    ) -> str | None:
+        # For now, return None to use template logic. In production, this would call LLM.
+        return None
+
     def _normalize_workflow(
         self,
         raw_graph: dict[str, Any],
