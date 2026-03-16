@@ -138,6 +138,7 @@ deploy-backend:
         echo "DOCKER_IMAGE=$BACKEND_IMAGE" > .env &&
         echo "TAG=$CI_COMMIT_SHORT_SHA" >> .env &&
         sudo docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY &&
+        sudo docker network create shop-network || true &&
         # IMPORTANT: do not use `docker compose down -v` here, DB volume must survive deploys.
         sudo docker compose pull &&
         sudo docker compose up -d
@@ -160,6 +161,7 @@ deploy-frontend:
         echo 'DOCKER_IMAGE=$FRONTEND_IMAGE' > .env &&
         echo 'TAG=$CI_COMMIT_SHORT_SHA' >> .env &&
         sudo docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY &&
+        sudo docker network create shop-network || true &&
         sudo docker compose pull &&
         sudo docker compose up -d
       "
@@ -181,6 +183,7 @@ deploy-demo-backend:
         echo 'DOCKER_IMAGE=$DEMO_BACKEND_IMAGE' > .env &&
         echo 'TAG=$CI_COMMIT_SHORT_SHA' >> .env &&
         sudo docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY &&
+        sudo docker network create shop-network || true &&
         sudo docker compose pull &&
         sudo docker compose up -d
       "
