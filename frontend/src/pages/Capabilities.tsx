@@ -81,12 +81,7 @@ const Capabilities: React.FC = () => {
           />
         </div>
 
-        <button className="hidden sm:flex items-center gap-2 text-primary hover:text-primary/80 transition-colors text-sm font-medium">
-          <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
-            <Plus className="h-4 w-4" />
-          </div>
-          Build New Capability
-        </button>
+
       </div>
 
       {/* Grid Section - Grouped by Folders */}
@@ -160,14 +155,10 @@ const Capabilities: React.FC = () => {
                                     </div>
                                   )}
                                 </div>
-                                <div className="p-2 border-t border-border bg-muted/10">
-                                  <button className="w-full text-[10px] text-primary hover:underline font-medium py-1">
-                                    Manage Connections
-                                  </button>
-                                </div>
+
                               </PopoverContent>
                             </Popover>
-                            <button className="text-primary hover:underline font-semibold">Detail</button>
+
                           </div>
                         </CardContent>
                       </Card>

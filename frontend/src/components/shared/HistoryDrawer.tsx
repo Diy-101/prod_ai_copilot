@@ -30,8 +30,8 @@ export const HistoryDrawer: React.FC<HistoryDrawerProps> = ({ isOpen, onClose })
   const [searchQuery, setSearchQuery] = useState('');
   const navigate = useNavigate();
 
-  const { 
-    data: dialogs = [], 
+  const {
+    data: dialogs = [],
     isLoading,
     refetch
   } = useQuery({
@@ -47,7 +47,12 @@ export const HistoryDrawer: React.FC<HistoryDrawerProps> = ({ isOpen, onClose })
   );
 
   const handleOpenDialog = (dialogId: string) => {
+    // Save to localStorage so SynthesisChat knows which one to load
+    const storageKey = `pipeline_active_dialog_id:${JSON.parse(localStorage.getItem('auth_user') || '{}')?.id || 'anonymous'
+      }`;
+    localStorage.setItem(storageKey, dialogId);
     navigate('/pipelines', { state: { dialogId } });
+    onClose();
   };
 
   const getStatusBadge = (status: string | null) => {
@@ -175,7 +180,11 @@ export const HistoryDrawer: React.FC<HistoryDrawerProps> = ({ isOpen, onClose })
                 className="w-full h-9 gap-2 text-xs"
                 variant="outline"
                 onClick={() => {
-                  navigate('/');
+                  const storageKey = `pipeline_active_dialog_id:${JSON.parse(localStorage.getItem('auth_user') || '{}')?.id || 'anonymous'
+                    }`;
+                  localStorage.removeItem(storageKey);
+                  navigate('/pipelines');
+                  onClose();
                 }}
               >
                 <MessageSquare className="h-3.5 w-3.5" /> Новый диалог

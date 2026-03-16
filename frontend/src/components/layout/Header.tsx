@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Bell, User, Settings, Menu, X, LogOut } from 'lucide-react';
+import { Bell, User, Menu, X, LogOut } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import {
@@ -22,9 +22,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const navigate = useNavigate();
 
-  const handleSettingsClick = () => {
-    navigate('/settings'); // Переход на страницу настроек
-  };
+
   const openProfile = () => {
     setIsProfileOpen(true);
   };
@@ -84,13 +82,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
                 <User className="mr-2 h-4 w-4" />
                 Профиль
               </DropdownMenuItem>
-              <DropdownMenuItem 
-                className="cursor-pointer"
-                onClick={handleSettingsClick}
-              >
-                <Settings className="mr-2 h-4 w-4" />
-                Настройки
-              </DropdownMenuItem>
+
               <DropdownMenuSeparator />
               <DropdownMenuItem 
                 className="cursor-pointer text-red-500 focus:text-red-500"

@@ -3,11 +3,6 @@ import {
   Plus,
   Search,
   FileJson,
-  MoreHorizontal,
-  Trash2,
-  ExternalLink,
-  ChevronRight,
-  FolderIcon
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -26,12 +21,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+
 import { SwaggerImportModal } from '@/components/shared/SwaggerImportModal';
 import { ImportResultsModal } from '@/components/shared/ImportResultsModal';
 import { toast } from 'sonner';
@@ -120,7 +110,24 @@ const Actions: React.FC = () => {
       {/* Grouped Table Sections */}
       <div className="flex-1 rounded-xl bg-card border border-border shadow-sm overflow-hidden flex flex-col">
         <div className="overflow-auto flex-1 p-2">
-          {Object.keys(groupedActions).length > 0 ? (
+          {actions.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 bg-background/50 m-2 rounded-xl border border-dashed border-border">
+              <div className="bg-muted/50 p-4 rounded-full mb-4">
+                <FileJson className="h-10 w-10 text-muted-foreground" />
+              </div>
+              <h3 className="text-lg font-medium text-foreground mb-1">Методы еще не загружены</h3>
+              <p className="text-sm text-muted-foreground mb-6 max-w-xs mx-auto text-center">
+                Импортируйте вашу OpenAPI спецификацию, чтобы начать использовать API действия в ваших пайплайнах.
+              </p>
+              <Button
+                onClick={() => setIsImportModalOpen(true)}
+                className="gap-2"
+              >
+                <FileJson className="h-4 w-4" />
+                Import Swagger
+              </Button>
+            </div>
+          ) : filteredActions.length > 0 ? (
             <Accordion type="multiple" defaultValue={Object.keys(groupedActions)} className="space-y-4">
               {Object.entries(groupedActions).map(([filename, groupActions]) => (
                 <AccordionItem 
@@ -148,42 +155,21 @@ const Actions: React.FC = () => {
                           <TableHead className="w-[100px] text-foreground h-10 py-0">Method</TableHead>
                           <TableHead className="text-foreground h-10 py-0">Endpoint Path</TableHead>
                           <TableHead className="hidden md:table-cell text-foreground h-10 py-0">Description</TableHead>
-                          <TableHead className="w-[50px] h-10 py-0"></TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {groupActions.map((action) => (
                           <TableRow key={action.id} className="group border-border/50">
-                            <TableCell className="py-2">
+                            <TableCell className="py-4">
                               <Badge variant="outline" className={`${getMethodColor(action.method)} font-bold text-[10px] px-1.5 py-0`}>
                                 {action.method}
                               </Badge>
                             </TableCell>
-                            <TableCell className="font-mono text-[13px] text-foreground py-2">
+                            <TableCell className="font-mono text-[13px] text-foreground py-4">
                               {action.path}
                             </TableCell>
-                            <TableCell className="hidden md:table-cell text-muted-foreground text-[13px] max-w-xs truncate py-2">
+                            <TableCell className="hidden md:table-cell text-muted-foreground text-[13px] py-4">
                               {action.summary || action.description}
-                            </TableCell>
-                            <TableCell className="py-2">
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <MoreHorizontal className="h-4 w-4" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end" className="w-40 bg-card border-border">
-                                  <DropdownMenuItem className="gap-2 cursor-pointer focus:bg-accent text-xs">
-                                    <ChevronRight className="h-3 w-3" /> View Specs
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem className="gap-2 cursor-pointer focus:bg-accent text-xs">
-                                    <ExternalLink className="h-3 w-3" /> Test API
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem className="gap-2 cursor-pointer text-red-500 focus:bg-red-500/10 focus:text-red-500 text-xs">
-                                    <Trash2 className="h-3 w-3" /> Delete
-                                  </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
                             </TableCell>
                           </TableRow>
                         ))}
@@ -196,30 +182,27 @@ const Actions: React.FC = () => {
           ) : (
             <div className="flex flex-col items-center justify-center py-20 bg-background/50 m-2 rounded-xl border border-dashed border-border">
               <div className="bg-muted/50 p-4 rounded-full mb-4">
-                <FileJson className="h-10 w-10 text-muted-foreground" />
+                <Search className="h-10 w-10 text-muted-foreground" />
               </div>
-              <h3 className="text-lg font-medium text-foreground mb-1">Методы еще не загружены</h3>
+              <h3 className="text-lg font-medium text-foreground mb-1">Ничего не найдено</h3>
               <p className="text-sm text-muted-foreground mb-6 max-w-xs mx-auto text-center">
-                Импортируйте вашу OpenAPI спецификацию, чтобы начать использовать API действия в ваших пайплайнах.
+                По вашему запросу "{searchTerm}" не найдено ни одного эндпоинта.
               </p>
               <Button
-                onClick={() => setIsImportModalOpen(true)}
+                variant="outline"
+                onClick={() => setSearchTerm('')}
                 className="gap-2"
               >
-                <FileJson className="h-4 w-4" />
-                Import Swagger
+                <Search className="h-4 w-4" />
+                Сбросить поиск
               </Button>
             </div>
           )}
         </div>
 
         {/* Pagination Placeholder */}
-        <div className="p-4 border-t border-border bg-muted/30 flex items-center justify-between text-xs text-muted-foreground">
+        <div className="p-4 border-t border-border bg-muted/30 flex items-center justify-center text-xs text-muted-foreground">
           <span>Показано {filteredActions.length} из {actions.length} действий</span>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" className="h-7 text-xs border-border" disabled>Back</Button>
-            <Button variant="outline" size="sm" className="h-7 text-xs border-border" disabled>Next</Button>
-          </div>
         </div>
       </div>
       <SwaggerImportModal

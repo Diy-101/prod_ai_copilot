@@ -497,9 +497,9 @@ export const Pipelines: React.FC = () => {
                       zIndex: isExpanded ? 50 : 10
                     }}
                     className={cn(
-                      "absolute border border-primary/20 bg-card/60 backdrop-blur-md shadow-lg rounded-xl overflow-hidden cursor-pointer transition-colors hover:border-primary/40",
+                      "absolute border border-primary/20 bg-card/60 backdrop-blur-md shadow-lg rounded-xl overflow-hidden cursor-pointer transition-colors hover:border-primary/40 flex flex-col",
                       stepStatusMeta.cardClass,
-                      isExpanded ? "shadow-2xl ring-1 ring-primary/10" : "shadow-md"
+                      isExpanded ? "shadow-2xl ring-1 ring-primary/10 max-h-[50vh]" : "shadow-md h-[90px]"
                     )}
                     style={{
                       width: CARD_WIDTH,
@@ -508,7 +508,7 @@ export const Pipelines: React.FC = () => {
                     }}
                     onClick={() => setExpandedStep(isExpanded ? null : node.step)}
                   >
-                    <div className="p-4 flex flex-col h-full">
+                    <div className={cn("p-4 flex flex-col h-full", isExpanded && "overflow-y-auto custom-scrollbar")}>
                       {/* Condensed Header */}
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex-1 min-w-0">
@@ -517,7 +517,7 @@ export const Pipelines: React.FC = () => {
                           </p>
                           <h3 className={cn(
                             "mt-0.5 font-semibold text-foreground transition-all",
-                            isExpanded ? "text-base" : "text-sm truncate"
+                            isExpanded ? "text-base" : "text-sm"
                           )}>
                             {node.name}
                           </h3>
@@ -553,19 +553,19 @@ export const Pipelines: React.FC = () => {
                             </p>
 
                             <div className="space-y-2 text-xs text-muted-foreground">
-                              <div className="flex justify-between">
+                              <div className="flex flex-col gap-0.5">
                                 <span className="font-semibold text-foreground">Capability:</span>
-                                <span className="text-right">{endpoint?.name || 'Не определено'}</span>
+                                <span className="text-muted-foreground break-words">{endpoint?.name || 'Не определено'}</span>
                               </div>
-                              <div className="flex justify-between">
+                              <div className="flex flex-col gap-0.5">
                                 <span className="font-semibold text-foreground">Inputs:</span>
-                                <span className="text-right">
+                                <span className="text-muted-foreground break-words">
                                   {node.input_connected_from.length > 0 ? `Step ${node.input_connected_from.join(', ')}` : 'External'}
                                 </span>
                               </div>
-                              <div className="flex justify-between">
+                              <div className="flex flex-col gap-0.5">
                                 <span className="font-semibold text-foreground">Outputs:</span>
-                                <span className="text-right">
+                                <span className="text-muted-foreground break-words">
                                   {node.output_connected_to.length > 0 ? `Step ${node.output_connected_to.join(', ')}` : 'Terminal'}
                                 </span>
                               </div>
