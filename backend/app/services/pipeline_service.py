@@ -488,13 +488,9 @@ class PipelineService:
     ) -> str:
         capabilities_payload = []
         allowed_capability_ids: list[str] = []
-        allowed_capability_ids: list[str] = []
         for sc in selected_capabilities:
             cap = sc.capability
             capabilities_payload.append(self._build_capability_prompt_payload(cap))
-            cap_id = str(getattr(cap, "id", "") or "").strip()
-            if cap_id:
-                allowed_capability_ids.append(cap_id)
             cap_id = str(getattr(cap, "id", "") or "").strip()
             if cap_id:
                 allowed_capability_ids.append(cap_id)
@@ -517,6 +513,7 @@ class PipelineService:
             "2) Graph must be a DAG (no cycles, no self-links).\n"
             "3) Use ONLY capability_id values from ALLOWED_CAPABILITY_IDS.\n"
             "4) Never replace capability_id with name/path/operation_id/action_id.\n"
+            "   Никогда не подменяй capability_id значениями name/path/operation_id/action_id.\n"
             "5) Edges must represent data-flow, not just chronological order.\n"
             "6) For each edge from_step->to_step:\n"
             "   - to_step must be in from_step.output_connected_to\n"
@@ -525,8 +522,8 @@ class PipelineService:
             "8) If PREVIOUS_GRAPH is non-empty, edit it in-place and keep unchanged valid parts.\n"
             "9) If exact capability choice is impossible, return empty graph: {\"nodes\": [], \"edges\": []}.\n\n"
             "MERGE_PATTERN_EXAMPLE:\n"
-            "- Step 1 produces users\n"
-            "- Step 2 produces hotels\n"
+            "- Step 1 produce users\n"
+            "- Step 2 produce hotels\n"
             "- Step 3 consumes users and hotels\n"
             "Expected edges:\n"
             '- (1->3, type=\"users\"), (2->3, type=\"hotels\")\n'
@@ -540,7 +537,6 @@ class PipelineService:
             f"{instruction}\n\n"
             f"USER_QUERY:\n{user_query}\n\n"
             f"DIALOG_CONTEXT:\n{json.dumps(context_payload, ensure_ascii=False)}\n\n"
-            f"ALLOWED_CAPABILITY_IDS:\n{json.dumps(allowed_capability_ids, ensure_ascii=False)}\n\n"
             f"ALLOWED_CAPABILITY_IDS:\n{json.dumps(allowed_capability_ids, ensure_ascii=False)}\n\n"
             f"CAPABILITIES:\n{json.dumps(capabilities_payload, ensure_ascii=False)}\n\n"
             "OUTPUT_SCHEMA:\n"
