@@ -20,8 +20,10 @@ services:
         condition: service_healthy
     networks:
       - shop-network
+      - backend-internal
 
   db:
+    container_name: db
     image: postgres:15-alpine
     environment:
       - POSTGRES_USER=user
@@ -35,9 +37,13 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - shop-network
+      backend-internal:
+        aliases:
+          - db
+      shop-network:
 
   redis:
+    container_name: redis
     image: redis:7-alpine
     ports:
       - "6380:6379"
@@ -47,8 +53,13 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - shop-network
+      backend-internal:
+        aliases:
+          - redis
+      shop-network:
 
 networks:
+  backend-internal:
+    driver: bridge
   shop-network:
     external: true
