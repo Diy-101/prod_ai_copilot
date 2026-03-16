@@ -213,6 +213,7 @@ class PipelineService:
                     "output_type": cap.output_schema,
                     "required_inputs": self._extract_required_inputs(cap.input_schema),
                     "data_format": cap.data_format,
+                    "semantic": self._extract_capability_semantic(cap),
                 }
             )
 
@@ -298,6 +299,13 @@ class PipelineService:
             parts.append(dialog_summary)
         parts.extend(chunk for chunk in recent_chunks if chunk)
         return "\n".join(part for part in parts if part)
+
+    def _extract_capability_semantic(self, capability: Any) -> dict[str, Any]:
+        llm_payload = getattr(capability, "llm_payload", None)
+        if not isinstance(llm_payload, dict):
+            return {}
+        semantic = llm_payload.get("semantic")
+        return semantic if isinstance(semantic, dict) else {}
 
     def _normalize_workflow(
         self,
@@ -426,6 +434,7 @@ class PipelineService:
                 "required_inputs": self._extract_required_inputs(sc.capability.input_schema),
                 "input_type": sc.capability.input_schema,
                 "output_type": sc.capability.output_schema,
+                "semantic": self._extract_capability_semantic(sc.capability),
             }
             for sc in selected_capabilities
         ]

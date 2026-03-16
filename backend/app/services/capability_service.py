@@ -108,6 +108,7 @@ class CapabilityService:
 
     @staticmethod
     def _build_capability_payload(action: Action) -> dict[str, Any]:
+        semantic_metadata = CapabilityService._extract_semantic_metadata(action)
         return {
             "name": CapabilityService._build_capability_name(action),
             "description": CapabilityService._build_capability_description(action),
@@ -116,6 +117,7 @@ class CapabilityService:
             "data_format": CapabilityService._build_data_format(action),
             "llm_payload": {
                 "source": "deterministic",
+                "semantic": semantic_metadata,
             },
         }
 
@@ -164,6 +166,7 @@ class CapabilityService:
         parameters_schema = getattr(action, "parameters_schema", None) or {}
         request_body_schema = getattr(action, "request_body_schema", None) or {}
         response_schema = getattr(action, "response_schema", None) or {}
+        semantic_metadata = CapabilityService._extract_semantic_metadata(action)
 
         parameter_locations: list[str] = []
         if isinstance(parameters_schema, dict):
@@ -185,4 +188,20 @@ class CapabilityService:
             "request_schema_type": request_body_schema.get("type") if isinstance(request_body_schema, dict) else None,
             "response_content_types": [response_content_type] if isinstance(response_content_type, str) else [],
             "response_schema_types": [response_schema.get("type")] if isinstance(response_schema, dict) and isinstance(response_schema.get("type"), str) else [],
+            "semantic": semantic_metadata,
+        }
+
+    @staticmethod
+    def _extract_semantic_metadata(action: Action) -> dict[str, Any]:
+        raw_spec = getattr(action, "raw_spec", None)
+        if not isinstance(raw_spec, dict):
+            raw_spec = {}
+
+        return {
+            "operation_id": getattr(action, "operation_id", None),
+            "tags": getattr(action, "tags", None) or [],
+            "capability_role": raw_spec.get("x-capability-role"),
+            "consumes": raw_spec.get("x-consumes") if isinstance(raw_spec.get("x-consumes"), list) else [],
+            "produces": raw_spec.get("x-produces") if isinstance(raw_spec.get("x-produces"), list) else [],
+            "pipeline_stage": raw_spec.get("x-pipeline-stage"),
         }

@@ -78,7 +78,8 @@ class SemanticSelectionService:
         description = str(getattr(capability, "description", "") or "")
         name_tokens = self._tokenize(name)
         description_tokens = self._tokenize(description)
-        combined_tokens = name_tokens | description_tokens
+        semantic_tokens = self._semantic_tokens(capability)
+        combined_tokens = name_tokens | description_tokens | semantic_tokens
         if not combined_tokens:
             return 0.0
 
@@ -88,8 +89,9 @@ class SemanticSelectionService:
 
         overlap_ratio = len(overlap) / len(query_tokens)
         name_ratio = len(query_tokens & name_tokens) / len(query_tokens)
+        semantic_ratio = len(query_tokens & semantic_tokens) / len(query_tokens)
         exact_bonus = 0.25 if query_tokens <= combined_tokens else 0.0
-        return max(overlap_ratio, name_ratio * 1.15) + exact_bonus
+        return max(overlap_ratio, name_ratio * 1.15, semantic_ratio * 1.35) + exact_bonus
 
     def _tokenize(self, value: str) -> set[str]:
         tokens = set(re.findall(r"[a-zA-Zа-яА-Я0-9]+", value.lower()))
@@ -98,3 +100,23 @@ class SemanticSelectionService:
             for token in tokens
             if len(token) >= 3 and token not in self._STOPWORDS
         }
+
+    def _semantic_tokens(self, capability: Capability) -> set[str]:
+        llm_payload = getattr(capability, "llm_payload", None)
+        if not isinstance(llm_payload, dict):
+            return set()
+        semantic = llm_payload.get("semantic")
+        if not isinstance(semantic, dict):
+            return set()
+
+        parts: list[str] = []
+        for key in ("operation_id", "capability_role"):
+            value = semantic.get(key)
+            if isinstance(value, str):
+                parts.append(value)
+        for key in ("tags", "consumes", "produces"):
+            value = semantic.get(key)
+            if isinstance(value, list):
+                parts.extend(str(item) for item in value if item)
+
+        return self._tokenize(" ".join(parts))
