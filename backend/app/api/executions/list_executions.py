@@ -12,7 +12,7 @@ from app.schemas.execution_sch import ExecutionRunListItemResponse
 router = APIRouter(tags=["Executions"])
 
 
-@router.get("", response_model=list[ExecutionRunListItemResponse])
+@router.get("/", response_model=list[ExecutionRunListItemResponse])
 async def list_executions(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
