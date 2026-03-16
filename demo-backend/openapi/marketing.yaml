@@ -1,0 +1,258 @@
+openapi: 3.0.3
+info:
+  title: Marketing Demo API
+  version: 1.0.0
+  description: |
+    Demo OpenAPI for Marketing scenarios:
+    1) get/search segments,
+    2) forecast audience size,
+    3) create audience,
+    4) generate push notifications,
+    5) create campaign draft.
+servers:
+  - url: http://demo-api:8010
+  - url: http://localhost:8010
+paths:
+  /marketing/segments:
+    get:
+      operationId: getMarketingSegments
+      tags: [marketing-demo-workflow]
+      summary: Get all available marketing segments
+      responses:
+        "200":
+          description: Segments list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SegmentSearchResponse"
+
+  /marketing/segments/search:
+    post:
+      operationId: searchMarketingSegments
+      tags: [marketing-demo-workflow]
+      summary: Search segments by query (Premium, Inactive, etc.)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SegmentSearchRequest"
+      responses:
+        "200":
+          description: Found segments
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SegmentSearchResponse"
+
+  /marketing/audience/forecast:
+    post:
+      operationId: forecastAudienceSize
+      tags: [marketing-demo-workflow]
+      summary: Forecast audience size for given segments
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AudienceForecastRequest"
+      responses:
+        "200":
+          description: Forecast data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AudienceForecastResponse"
+
+  /marketing/audience/create:
+    post:
+      operationId: createMarketingAudience
+      tags: [marketing-demo-workflow]
+      summary: Create audience from forecast
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AudienceCreateRequest"
+      responses:
+        "200":
+          description: Audience created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AudienceCreateResponse"
+
+  /marketing/push/generate:
+    post:
+      operationId: generatePushVariants
+      tags: [marketing-demo-workflow]
+      summary: Generate push notification variants
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PushGenerateRequest"
+      responses:
+        "200":
+          description: Generated variants
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PushGenerateResponse"
+
+  /marketing/campaign/draft:
+    post:
+      operationId: createCampaignDraft
+      tags: [marketing-demo-workflow]
+      summary: Create a campaign draft
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CampaignDraftRequest"
+      responses:
+        "200":
+          description: Campaign draft created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CampaignDraftResponse"
+
+components:
+  schemas:
+    MarketingSegment:
+      type: object
+      required: [id, name, count]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        count:
+          type: integer
+
+    SegmentSearchRequest:
+      type: object
+      required: [query]
+      properties:
+        query:
+          type: string
+
+    SegmentSearchResponse:
+      type: object
+      required: [segments]
+      properties:
+        segments:
+          type: array
+          items:
+            $ref: "#/components/schemas/MarketingSegment"
+
+    AudienceForecastRequest:
+      type: object
+      required: [segment_ids]
+      properties:
+        segment_ids:
+          type: array
+          items:
+            type: string
+        intersection_logic:
+          type: string
+          enum: [AND, OR]
+          default: AND
+
+    AudienceForecastResponse:
+      type: object
+      required: [forecast_id, size, reach_percentage, kpis, chart_data]
+      properties:
+        forecast_id:
+          type: string
+        size:
+          type: integer
+        reach_percentage:
+          type: number
+        kpis:
+          type: object
+          additionalProperties:
+            type: string
+        chart_data:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+
+    AudienceCreateRequest:
+      type: object
+      required: [forecast_id, confirmed_by]
+      properties:
+        forecast_id:
+          type: string
+        confirmed_by:
+          type: string
+
+    AudienceCreateResponse:
+      type: object
+      required: [audience_id, status]
+      properties:
+        audience_id:
+          type: string
+        status:
+          type: string
+        details:
+          type: object
+
+    PushVariant:
+      type: object
+      required: [id, text, tone]
+      properties:
+        id:
+          type: string
+        text:
+          type: string
+        tone:
+          type: string
+
+    PushGenerateRequest:
+      type: object
+      required: [audience_id]
+      properties:
+        audience_id:
+          type: string
+        count:
+          type: integer
+          default: 3
+
+    PushGenerateResponse:
+      type: object
+      required: [variants]
+      properties:
+        variants:
+          type: array
+          items:
+            $ref: "#/components/schemas/PushVariant"
+
+    CampaignDraftRequest:
+      type: object
+      required: [audience_id, push_variant_id, campaign_name]
+      properties:
+        audience_id:
+          type: string
+        push_variant_id:
+          type: string
+        campaign_name:
+          type: string
+
+    CampaignDraftResponse:
+      type: object
+      required: [campaign_id, status, preview_url]
+      properties:
+        campaign_id:
+          type: string
+        status:
+          type: string
+        preview_url:
+          type: string
