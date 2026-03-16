@@ -169,10 +169,15 @@ class PipelineService:
             previous_edges=previous_edges,
         )
 
+        deterministic_raw_graph = self._build_deterministic_raw_graph(
+            selected_capabilities
+        )
         try:
             raw_graph = self.generate_raw_graph(message, selected_capabilities, prompt)
         except Exception:
-            raw_graph = self._build_minimal_raw_graph(selected_capabilities)
+            raw_graph = deterministic_raw_graph or self._build_minimal_raw_graph(
+                selected_capabilities
+            )
             if raw_graph is None:
                 return {
                     "status": "cannot_build",
@@ -190,8 +195,14 @@ class PipelineService:
         chat_reply = self._build_chat_reply_ru(normalized_nodes, normalized_edges)
 
         if not is_ready:
-            fallback_raw_graph = self._build_minimal_raw_graph(selected_capabilities)
-            if fallback_raw_graph is not None:
+            fallback_candidates: list[dict[str, Any]] = []
+            if deterministic_raw_graph is not None:
+                fallback_candidates.append(deterministic_raw_graph)
+            minimal_raw_graph = self._build_minimal_raw_graph(selected_capabilities)
+            if minimal_raw_graph is not None:
+                fallback_candidates.append(minimal_raw_graph)
+
+            for fallback_raw_graph in fallback_candidates:
                 fallback_nodes, fallback_edges, fallback_ready, fallback_missing = self._prepare_graph(
                     raw_graph=fallback_raw_graph,
                     selected_capabilities=selected_capabilities,
@@ -202,8 +213,8 @@ class PipelineService:
                     is_ready = True
                     missing = []
                     chat_reply = self._build_chat_reply_ru(normalized_nodes, normalized_edges)
-                else:
-                    missing = fallback_missing
+                    break
+                missing = fallback_missing
 
         if not is_ready:
             await self.dialog_memory.append_and_summarize(
@@ -271,6 +282,20 @@ class PipelineService:
         normalized_nodes, normalized_edges, normalization_issues = self._normalize_workflow(
             raw_graph, selected_capabilities
         )
+        normalized_edges = self._repair_edges_with_data_flow(
+            normalized_nodes, normalized_edges
+        )
+        gated_edges = self._prune_edges_by_required_inputs(
+            normalized_nodes, normalized_edges
+        )
+        if gated_edges:
+            normalized_edges = gated_edges
+        normalized_edges = self._prune_edges_for_terminal_goal(
+            normalized_nodes, normalized_edges
+        )
+        normalized_nodes, normalized_edges = self._prune_disconnected_nodes(
+            normalized_nodes, normalized_edges
+        )
         self._sync_node_connections(normalized_nodes, normalized_edges)
         self._ensure_external_inputs(normalized_nodes, normalized_edges)
         is_ready, missing = self._validate_ready_graph(normalized_nodes, normalized_edges)
@@ -308,6 +333,100 @@ class PipelineService:
                 "edges": [],
             }
         return None
+
+    def _build_deterministic_raw_graph(
+        self,
+        selected_capabilities: list[SelectedCapability],
+    ) -> dict[str, Any] | None:
+        candidates: list[SelectedCapability] = [
+            item
+            for item in selected_capabilities
+            if getattr(item.capability, "id", None) is not None
+            and getattr(item.capability, "action_id", None) is not None
+        ]
+        if not candidates:
+            return None
+
+        # Build a stable execution order where capabilities with already-satisfied
+        # required inputs are preferred; this gives predictable linear/merge chains.
+        remaining = list(candidates)
+        produced_fields: set[str] = set()
+        ordered: list[dict[str, Any]] = []
+
+        while remaining:
+            best_idx = 0
+            best_rank: tuple[int, int, float] = (-1, -1, float("-inf"))
+            for idx, item in enumerate(remaining):
+                cap = item.capability
+                required = set(self._extract_required_inputs(getattr(cap, "input_schema", None)))
+                satisfied_count = len(required & produced_fields)
+                all_satisfied = int(not required or satisfied_count == len(required))
+                rank = (all_satisfied, satisfied_count, float(item.score))
+                if rank > best_rank:
+                    best_rank = rank
+                    best_idx = idx
+
+            selected = remaining.pop(best_idx)
+            cap = selected.capability
+            required = self._extract_required_inputs(getattr(cap, "input_schema", None))
+            output_fields = self._extract_output_fields(getattr(cap, "output_schema", None))
+            ordered.append(
+                {
+                    "capability": cap,
+                    "required_inputs": required,
+                    "output_fields": output_fields,
+                }
+            )
+            produced_fields.update(output_fields)
+
+        nodes: list[dict[str, Any]] = []
+        edges: list[dict[str, Any]] = []
+        seen_edges: set[tuple[int, int, str]] = set()
+        producers_by_field: dict[str, list[int]] = {}
+
+        for index, item in enumerate(ordered, start=1):
+            cap = item["capability"]
+            required_inputs = [str(field) for field in item["required_inputs"] if isinstance(field, str)]
+            external_inputs: set[str] = set(required_inputs)
+
+            for required_input in required_inputs:
+                producers = producers_by_field.get(required_input, [])
+                if not producers:
+                    continue
+                src = producers[-1]
+                edge_key = (src, index, required_input)
+                if edge_key in seen_edges:
+                    external_inputs.discard(required_input)
+                    continue
+                seen_edges.add(edge_key)
+                edges.append(
+                    {
+                        "from_step": src,
+                        "to_step": index,
+                        "type": required_input,
+                    }
+                )
+                external_inputs.discard(required_input)
+
+            nodes.append(
+                {
+                    "step": index,
+                    "name": str(getattr(cap, "name", f"Step {index}") or f"Step {index}"),
+                    "description": getattr(cap, "description", None),
+                    "capability_id": str(cap.id),
+                    "input_connected_from": [],
+                    "output_connected_to": [],
+                    "input_data_type_from_previous": [],
+                    "external_inputs": sorted(external_inputs),
+                }
+            )
+
+            for output_field in item["output_fields"]:
+                producers_by_field.setdefault(str(output_field), []).append(index)
+
+        if not nodes:
+            return None
+        return {"nodes": nodes, "edges": edges}
 
     def generate_raw_graph(
         self,
@@ -486,6 +605,7 @@ class PipelineService:
             message=message,
             dialog_messages=dialog_messages,
             selected_capabilities=selected_capabilities,
+            question_number=question_number,
         )
         if llm_question:
             return llm_question
@@ -510,9 +630,82 @@ class PipelineService:
         message: str,
         dialog_messages: list[dict[str, Any]],
         selected_capabilities: list[SelectedCapability],
+        question_number: int = 1,
     ) -> str | None:
-        # For now, return None to use template logic. In production, this would call LLM.
-        return None
+        if not selected_capabilities:
+            return None
+
+        message_tokens = self._tokenize_text(message or "")
+        output_candidates: list[str] = []
+        required_inputs: list[str] = []
+        capability_names: list[str] = []
+
+        for item in selected_capabilities[:6]:
+            cap = item.capability
+            capability_name = str(getattr(cap, "name", "") or "").strip()
+            if capability_name:
+                capability_names.append(capability_name)
+
+            for field in self._extract_output_fields(getattr(cap, "output_schema", None)):
+                if field not in output_candidates:
+                    output_candidates.append(field)
+
+            for field in self._extract_required_inputs(getattr(cap, "input_schema", None)):
+                if field not in required_inputs:
+                    required_inputs.append(field)
+
+        if not capability_names:
+            return None
+
+        capability_hint = ", ".join(capability_names[:3])
+        mentioned_outputs = {
+            field
+            for field in output_candidates
+            if field.lower() in message_tokens
+        }
+        mentioned_inputs = {
+            field
+            for field in required_inputs
+            if field.lower() in message_tokens
+        }
+
+        if question_number >= 2 and required_inputs:
+            options = ", ".join(required_inputs[:5])
+            return (
+                f"Чтобы правильно связать доступные шаги ({capability_hint}), "
+                f"уточните входные данные: {options}."
+            )
+
+        if output_candidates and not mentioned_outputs:
+            options = ", ".join(output_candidates[:4])
+            return (
+                f"Чтобы собрать корректный сценарий по шагам ({capability_hint}), "
+                f"какой финальный результат нужен: {options}?"
+            )
+
+        if required_inputs and len(mentioned_inputs) < min(2, len(required_inputs)):
+            options = ", ".join(required_inputs[:5])
+            return (
+                f"Чтобы правильно связать доступные шаги ({capability_hint}), "
+                f"уточните входные данные: {options}."
+            )
+
+        recent_user_messages = [
+            str(msg.get("content") or "").strip()
+            for msg in dialog_messages[-4:]
+            if isinstance(msg, dict) and msg.get("role") == "user"
+        ]
+        context_hint = " / ".join(chunk for chunk in recent_user_messages if chunk)[:180]
+        if context_hint:
+            return (
+                "Уточните критерий выполнения сценария: по какому правилу считать результат успешным "
+                f"для задачи «{context_hint}»?"
+            )
+
+        return (
+            f"Чтобы корректно собрать сценарий из доступных шагов ({capability_hint}), "
+            "уточните ожидаемый результат и ключевые входные данные."
+        )
 
     def _normalize_workflow(
         self,
@@ -521,6 +714,11 @@ class PipelineService:
     ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[str]]:
         capabilities_by_id = {
             str(sc.capability.id): sc.capability for sc in selected_capabilities
+        }
+        capabilities_by_action_id = {
+            str(sc.capability.action_id): sc.capability
+            for sc in selected_capabilities
+            if getattr(sc.capability, "action_id", None) is not None
         }
         capabilities = [sc.capability for sc in selected_capabilities]
         issues: list[str] = []
@@ -545,14 +743,28 @@ class PipelineService:
                 next_step += 1
             step_map[raw_step] = step
 
+            endpoint_payload = (
+                raw_node.get("endpoints")[0]
+                if isinstance(raw_node.get("endpoints"), list)
+                and raw_node.get("endpoints")
+                and isinstance(raw_node.get("endpoints")[0], dict)
+                else {}
+            )
             capability_id_raw = raw_node.get("capability_id")
+            if capability_id_raw is None and isinstance(endpoint_payload, dict):
+                capability_id_raw = endpoint_payload.get("capability_id")
+            action_id_raw = raw_node.get("action_id")
+            if action_id_raw is None and isinstance(endpoint_payload, dict):
+                action_id_raw = endpoint_payload.get("action_id")
             cap = self._resolve_capability_for_node(
                 raw_node=raw_node,
                 capability_id=capability_id_raw,
+                action_id=action_id_raw,
                 capabilities=capabilities,
                 capabilities_by_id=capabilities_by_id,
+                capabilities_by_action_id=capabilities_by_action_id,
             )
-            if capability_id_raw is not None and cap is None:
+            if (capability_id_raw is not None or action_id_raw is not None) and cap is None:
                 issues.append("graph:invalid_capability_ref")
 
             if cap is None:
@@ -752,16 +964,27 @@ class PipelineService:
         *,
         raw_node: dict[str, Any],
         capability_id: Any,
+        action_id: Any,
         capabilities: list[Any],
         capabilities_by_id: dict[str, Any],
+        capabilities_by_action_id: dict[str, Any],
     ) -> Any | None:
         if capability_id:
             by_id = capabilities_by_id.get(str(capability_id))
             if by_id is not None:
                 return by_id
+            normalized_capability_ref = str(capability_id).strip().lower()
             for cap in capabilities:
-                if str(getattr(cap, "name", "")) == str(capability_id):
+                if (
+                    str(getattr(cap, "name", "")).strip().lower()
+                    == normalized_capability_ref
+                ):
                     return cap
+
+        if action_id:
+            by_action_id = capabilities_by_action_id.get(str(action_id))
+            if by_action_id is not None:
+                return by_action_id
 
         # Strict mode: no fuzzy mapping to avoid accidental capability substitutions.
         return None
@@ -1213,9 +1436,49 @@ class PipelineService:
     ) -> list[str]:
         if not isinstance(input_schema, dict):
             return []
+        collected: set[str] = set()
+
         required = input_schema.get("required")
         if isinstance(required, list):
-            return [str(item) for item in required if item]
+            collected.update(str(item) for item in required if item)
+
+        properties = input_schema.get("properties")
+        if isinstance(properties, dict):
+            for nested_name in ("parameters", "request_body"):
+                nested = properties.get(nested_name)
+                if not isinstance(nested, dict):
+                    continue
+                nested_required = nested.get("required")
+                if isinstance(nested_required, list):
+                    collected.update(str(item) for item in nested_required if item)
+
+        return sorted(collected)
+
+    def _extract_output_fields(
+        self,
+        output_schema: dict[str, Any] | None,
+    ) -> list[str]:
+        if not isinstance(output_schema, dict):
+            return []
+
+        properties = output_schema.get("properties")
+        if isinstance(properties, dict):
+            return sorted(
+                str(name)
+                for name in properties.keys()
+                if isinstance(name, str) and name.strip()
+            )
+
+        items = output_schema.get("items")
+        if isinstance(items, dict):
+            item_properties = items.get("properties")
+            if isinstance(item_properties, dict):
+                return sorted(
+                    str(name)
+                    for name in item_properties.keys()
+                    if isinstance(name, str) and name.strip()
+                )
+
         return []
 
     def _extract_required_inputs_from_node(self, node: dict[str, Any]) -> list[str]:

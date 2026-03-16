@@ -23,6 +23,38 @@ def _build_capability() -> SimpleNamespace:
     )
 
 
+def _build_travel_like_capabilities() -> list[SimpleNamespace]:
+    return [
+        SimpleNamespace(
+            id=uuid4(),
+            action_id=uuid4(),
+            name="get_recent_users",
+            description="Get recent users",
+            input_schema={"type": "object", "required": []},
+            output_schema={"type": "object", "properties": {"users": {"type": "array"}}},
+            data_format={"response_schema_types": ["object"]},
+        ),
+        SimpleNamespace(
+            id=uuid4(),
+            action_id=uuid4(),
+            name="get_top_hotels",
+            description="Get top hotels",
+            input_schema={"type": "object", "required": []},
+            output_schema={"type": "object", "properties": {"hotels": {"type": "array"}}},
+            data_format={"response_schema_types": ["object"]},
+        ),
+        SimpleNamespace(
+            id=uuid4(),
+            action_id=uuid4(),
+            name="segment_users_by_hotels",
+            description="Build segments",
+            input_schema={"type": "object", "required": ["users", "hotels"]},
+            output_schema={"type": "object", "properties": {"segments": {"type": "array"}}},
+            data_format={"response_schema_types": ["object"]},
+        ),
+    ]
+
+
 def _build_service() -> PipelineService:
     session = SimpleNamespace(
         add=lambda *_: None,
@@ -94,6 +126,22 @@ def test_generate_llm_failure_falls_back_to_minimal_ready_pipeline():
     assert result["nodes"][0]["endpoints"][0]["action_id"] == str(capability.action_id)
     assert result["edges"] == []
     assert result["context_summary"] == "ctx summary"
+
+
+def test_build_deterministic_raw_graph_creates_merge_edges():
+    service = _build_service()
+    capabilities = _build_travel_like_capabilities()
+    selected = [
+        SelectedCapability(capability=capability, score=1.0, confidence_tier="high")
+        for capability in capabilities
+    ]
+
+    raw_graph = service._build_deterministic_raw_graph(selected)
+
+    assert raw_graph is not None
+    assert len(raw_graph["nodes"]) == 3
+    assert {"from_step": 1, "to_step": 3, "type": "users"} in raw_graph["edges"]
+    assert {"from_step": 2, "to_step": 3, "type": "hotels"} in raw_graph["edges"]
 
 
 def test_sync_node_connections_from_edges_overrides_stale_links():
@@ -289,6 +337,25 @@ def test_second_clarification_question_mentions_missing_required_inputs():
     assert "token" in question.lower()
 
 
+def test_generate_clarification_question_uses_capability_context():
+    service = _build_service()
+    capability = _build_capability()
+    selected = [
+        SelectedCapability(capability=capability, score=0.2, confidence_tier="low")
+    ]
+
+    question = service._generate_clarification_question_ru(
+        message="Собери сценарий для кампании",
+        dialog_messages=[{"role": "user", "content": "Нужна кампания"}],
+        selected_capabilities=selected,
+    )
+
+    assert isinstance(question, str)
+    assert len(question.strip()) > 8
+    assert "token" in question.lower()
+    assert "get_users" in question
+
+
 def test_low_confidence_attempts_1_2_then_build_on_3rd():
     service = _build_service()
     capability = _build_capability()
@@ -453,6 +520,56 @@ def test_normalize_workflow_marks_invalid_capability_reference():
     assert edges == []
     assert nodes[0]["endpoints"] == []
     assert "graph:invalid_capability_ref" in issues
+
+
+def test_normalize_workflow_resolves_capability_from_endpoint_payload():
+    service = _build_service()
+    capability = _build_capability()
+    selected = [SelectedCapability(capability=capability, score=1.0)]
+
+    nodes, edges, issues = service._normalize_workflow(
+        {
+            "nodes": [
+                {
+                    "step": 1,
+                    "name": "Endpoint capability ref",
+                    "endpoints": [{"capability_id": str(capability.id)}],
+                }
+            ],
+            "edges": [],
+        },
+        selected,
+    )
+
+    assert issues == []
+    assert len(nodes) == 1
+    assert edges == []
+    assert nodes[0]["endpoints"][0]["capability_id"] == str(capability.id)
+
+
+def test_normalize_workflow_resolves_capability_from_action_id():
+    service = _build_service()
+    capability = _build_capability()
+    selected = [SelectedCapability(capability=capability, score=1.0)]
+
+    nodes, edges, issues = service._normalize_workflow(
+        {
+            "nodes": [
+                {
+                    "step": 1,
+                    "name": "Action capability ref",
+                    "endpoints": [{"action_id": str(capability.action_id)}],
+                }
+            ],
+            "edges": [],
+        },
+        selected,
+    )
+
+    assert issues == []
+    assert len(nodes) == 1
+    assert edges == []
+    assert nodes[0]["endpoints"][0]["action_id"] == str(capability.action_id)
 
 
 def test_repair_edges_with_data_flow_does_not_autolink_object_types():
