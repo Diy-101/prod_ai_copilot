@@ -74,6 +74,7 @@ build-backend:
   only:
     - main
     - master
+    - 12hrs
 
 build-frontend:
   stage: build
@@ -85,6 +86,7 @@ build-frontend:
   only:
     - main
     - master
+    - 12hrs
 
 build-demo-backend:
   stage: build
@@ -96,6 +98,7 @@ build-demo-backend:
   only:
     - main
     - master
+    - 12hrs
 
 .deploy-base:
   image: alpine:latest
@@ -113,6 +116,7 @@ build-demo-backend:
   only:
     - main
     - master
+    - 12hrs
   environment:
     name: production
 
