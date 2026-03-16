@@ -516,8 +516,8 @@ export const Pipelines: React.FC = () => {
                             Step {node.step}
                           </p>
                           <h3 className={cn(
-                            "mt-0.5 font-semibold text-foreground truncate transition-all",
-                            isExpanded ? "text-base" : "text-sm"
+                            "mt-0.5 font-semibold text-foreground transition-all",
+                            isExpanded ? "text-base" : "text-sm truncate"
                           )}>
                             {node.name}
                           </h3>
