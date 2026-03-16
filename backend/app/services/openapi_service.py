@@ -34,6 +34,12 @@ class OpenAPIService:
         if not isinstance(document.get("paths"), dict) or not document["paths"]:
             raise ValueError("OpenAPI file must contain a non-empty paths section")
 
+        base_url = OpenAPIService._extract_base_url(document)
+        if base_url is None:
+            raise ValueError(
+                "OpenAPI file must contain servers[0].url (base_url)"
+            )
+
         return document
 
     @classmethod
@@ -175,7 +181,11 @@ class OpenAPIService:
         if isinstance(servers, list) and servers:
             first_server = servers[0]
             if isinstance(first_server, dict):
-                return first_server.get("url")
+                url = first_server.get("url")
+                if isinstance(url, str):
+                    normalized_url = url.strip()
+                    if normalized_url:
+                        return normalized_url
         return None
 
     @classmethod
