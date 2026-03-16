@@ -1,6 +1,7 @@
 # demo-backend
 
-Отдельный демо backend для travel pipeline из `openapi/travel.yaml`.
+Отдельный демо backend для простых линейных сценариев из
+`openapi/all_linear_scenarios.yaml`.
 
 ## Запуск
 
@@ -44,16 +45,12 @@ CRM линейный сценарий:
 Swagger UI: `http://localhost:8010/docs`
 OpenAPI JSON: `http://localhost:8010/openapi.json`
 
-Для генерации/запуска pipeline в основном backend импортируй именно
-`demo-backend/openapi/travel.yaml`:
-- `servers[0].url` = `http://demo-api:8010` (работает для backend-контейнера в `shop-network`)
+Для тестов импортируй в основной backend:
+`demo-backend/openapi/all_linear_scenarios.yaml`
+
+- `servers[0].url` = `http://demo-api:8010` (для backend-контейнера в `shop-network`)
 - `servers[1].url` = `http://localhost:8010` (локальный запуск без Docker)
-- у `template_id` задан `default`, чтобы one-click execution не требовал ручной ввод
-
-Для CRM-сценария используй `demo-backend/openapi/crm_linear_pipeline.yaml`.
-
-Если хочешь загрузить сразу все демо-ручки одним файлом:
-`demo-backend/openapi/all_linear_scenarios.yaml`.
+- `template_id` имеет `default`, поэтому one-click execution не требует ручного ввода
 
 ## Быстрая проверка пайплайна
 

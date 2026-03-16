@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import FastAPI, Query
 from pydantic import BaseModel, Field
@@ -126,74 +126,8 @@ class SendOffersResponse(BaseModel):
     failed: list[FailedLeadDelivery] = Field(default_factory=list)
 
 
-class MarketingSegment(BaseModel):
-    id: str
-    name: str
-    description: str
-    count: int
-
-
-class SegmentSearchRequest(BaseModel):
-    query: str
-
-
-class SegmentSearchResponse(BaseModel):
-    segments: list[MarketingSegment]
-
-
-class AudienceForecastRequest(BaseModel):
-    segment_ids: list[str]
-    intersection_logic: str = "AND"
-
-
-class AudienceForecastResponse(BaseModel):
-    forecast_id: str
-    size: int
-    reach_percentage: float
-    kpis: dict[str, Any]
-    chart_data: list[dict[str, Any]]
-
-
-class AudienceCreateRequest(BaseModel):
-    forecast_id: str
-    confirmed_by: str
-
-
-class AudienceCreateResponse(BaseModel):
-    audience_id: str
-    status: str
-    details: dict[str, Any]
-
-
-class PushVariant(BaseModel):
-    id: str
-    text: str
-    tone: str
-
-
-class PushGenerateRequest(BaseModel):
-    audience_id: str
-    count: int = 3
-
-
-class PushGenerateResponse(BaseModel):
-    variants: list[PushVariant]
-
-
-class CampaignDraftRequest(BaseModel):
-    audience_id: str
-    push_variant_id: str
-    campaign_name: str
-
-
-class CampaignDraftResponse(BaseModel):
-    campaign_id: str
-    status: str
-    preview_url: str
-
-
 APP_DESCRIPTION = """
-Synthetic API with multiple linear demo workflows.
+Synthetic API with linear demo workflows.
 
 Travel workflow:
 1. `GET /users/recent`
@@ -207,15 +141,7 @@ CRM workflow:
 2. `POST /crm/leads/qualify`
 3. `POST /crm/offers/prepare`
 4. `POST /crm/offers/send`
-
-Marketing workflow:
-1. `GET /marketing/segments`
-2. `POST /marketing/segments/search` (Premium, Inactive 60+, High average check)
-3. `POST /marketing/audience/forecast`
-4. `POST /marketing/audience/create`
-5. `POST /marketing/push/generate`
-6. `POST /marketing/campaign/draft`
-"""
+""".strip()
 
 
 app = FastAPI(
@@ -454,124 +380,6 @@ async def send_prepared_offers(payload: SendOffersRequest) -> SendOffersResponse
         sent_count=sent_count,
         failed_count=len(failed),
         failed=failed,
-    )
-
-
-@app.get(
-    "/marketing/segments",
-    response_model=SegmentSearchResponse,
-    operation_id="getMarketingSegments",
-    tags=["marketing-demo-workflow"],
-)
-async def get_marketing_segments() -> SegmentSearchResponse:
-    return SegmentSearchResponse(
-        segments=[
-            MarketingSegment(id="seg_premium", name="Премиум", description="Клиенты с высоким доходом", count=15000),
-            MarketingSegment(id="seg_inactive_60", name="Неактивные 60+ дней", description="Не совершали покупок более 2 месяцев", count=45000),
-            MarketingSegment(id="seg_high_check", name="Высокий средний чек", description="Клиенты со средним чеком > 5000р", count=12000),
-            MarketingSegment(id="seg_newbie", name="Новички", description="Зарегистрированы в последние 30 дней", count=8000),
-        ]
-    )
-
-
-@app.post(
-    "/marketing/segments/search",
-    response_model=SegmentSearchResponse,
-    operation_id="searchMarketingSegments",
-    tags=["marketing-demo-workflow"],
-)
-async def search_marketing_segments(payload: SegmentSearchRequest) -> SegmentSearchResponse:
-    all_segments = [
-        MarketingSegment(id="seg_premium", name="Премиум", description="Клиенты с высоким доходом", count=15000),
-        MarketingSegment(id="seg_inactive_60", name="Неактивные 60+ дней", description="Не совершали покупок более 2 месяцев", count=45000),
-        MarketingSegment(id="seg_high_check", name="Высокий средний чек", description="Клиенты со средним чеком > 5000р", count=12000),
-    ]
-    # In a real app we'd filter by payload.query, but for demo we return the requested ones
-    return SegmentSearchResponse(segments=all_segments)
-
-
-@app.post(
-    "/marketing/audience/forecast",
-    response_model=AudienceForecastResponse,
-    operation_id="forecastAudienceSize",
-    tags=["marketing-demo-workflow"],
-)
-async def forecast_audience_size(payload: AudienceForecastRequest) -> AudienceForecastResponse:
-    # Deterministic mock size based on segments
-    base_size = 0
-    if "seg_premium" in payload.segment_ids: base_size += 5000
-    if "seg_inactive_60" in payload.segment_ids: base_size += 8000
-    if "seg_high_check" in payload.segment_ids: base_size += 3000
-    
-    if payload.intersection_logic == "AND":
-        size = int(base_size * 0.2)
-    else:
-        size = base_size
-
-    return AudienceForecastResponse(
-        forecast_id=f"fc_{datetime.now().timestamp()}",
-        size=size,
-        reach_percentage=round(size / 100000 * 100, 2),
-        kpis={
-            "expected_cr": "4.5%",
-            "estimated_roi": "250%",
-            "avg_frequency": "1.2"
-        },
-        chart_data=[
-            {"day": "Mon", "value": int(size * 0.8)},
-            {"day": "Tue", "value": int(size * 0.85)},
-            {"day": "Wed", "value": int(size * 0.9)},
-            {"day": "Thu", "value": int(size * 0.95)},
-            {"day": "Fri", "value": size},
-        ]
-    )
-
-
-@app.post(
-    "/marketing/audience/create",
-    response_model=AudienceCreateResponse,
-    operation_id="createMarketingAudience",
-    tags=["marketing-demo-workflow"],
-)
-async def create_marketing_audience(payload: AudienceCreateRequest) -> AudienceCreateResponse:
-    return AudienceCreateResponse(
-        audience_id=f"aud_{datetime.now().timestamp()}",
-        status="ACTIVE",
-        details={
-            "forecast_id": payload.forecast_id,
-            "confirmed_by": payload.confirmed_by,
-            "creation_time": datetime.now().isoformat()
-        }
-    )
-
-
-@app.post(
-    "/marketing/push/generate",
-    response_model=PushGenerateResponse,
-    operation_id="generatePushVariants",
-    tags=["marketing-demo-workflow"],
-)
-async def generate_push_variants(payload: PushGenerateRequest) -> PushGenerateResponse:
-    return PushGenerateResponse(
-        variants=[
-            PushVariant(id="v1", text="Скучаем по вам! Специальная скидка 15% только сегодня.", tone="Emotional"),
-            PushVariant(id="v2", text="Успейте воспользоваться бонусами, пока они не сгорели!", tone="Urgent"),
-            PushVariant(id="v3", text="Новая коллекция премиум-товаров уже в приложении.", tone="Informative"),
-        ][:payload.count]
-    )
-
-
-@app.post(
-    "/marketing/campaign/draft",
-    response_model=CampaignDraftResponse,
-    operation_id="createCampaignDraft",
-    tags=["marketing-demo-workflow"],
-)
-async def create_campaign_draft(payload: CampaignDraftRequest) -> CampaignDraftResponse:
-    return CampaignDraftResponse(
-        campaign_id=f"camp_{datetime.now().timestamp()}",
-        status="DRAFT",
-        preview_url=f"https://demo.ads/preview/{payload.push_variant_id}"
     )
 
 

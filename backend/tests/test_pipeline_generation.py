@@ -334,7 +334,8 @@ def test_second_clarification_question_mentions_missing_required_inputs():
     )
 
     assert "уточнение" not in question.lower()
-    assert "token" in question.lower()
+    assert "критерию" in question.lower() or "правила" in question.lower()
+    assert "token" not in question.lower()
 
 
 def test_generate_clarification_question_uses_capability_context():
@@ -352,8 +353,59 @@ def test_generate_clarification_question_uses_capability_context():
 
     assert isinstance(question, str)
     assert len(question.strip()) > 8
-    assert "token" in question.lower()
-    assert "get_users" in question
+    assert "бизнес" in question.lower() or "результат" in question.lower()
+    assert "token" not in question.lower()
+    assert "get_users" not in question
+
+
+def test_marketing_clarification_question_does_not_expose_technical_fields():
+    service = _build_service()
+    capabilities = [
+        SimpleNamespace(
+            id=uuid4(),
+            action_id=uuid4(),
+            name="forecastAudienceSize",
+            description="Forecast audience for campaign",
+            input_schema={"type": "object", "required": ["segment_ids"]},
+            output_schema={"type": "object", "properties": {"forecast_id": {"type": "string"}}},
+            data_format={"response_schema_types": ["object"]},
+        ),
+        SimpleNamespace(
+            id=uuid4(),
+            action_id=uuid4(),
+            name="createMarketingAudience",
+            description="Create audience from forecast",
+            input_schema={"type": "object", "required": ["forecast_id", "confirmed_by"]},
+            output_schema={"type": "object", "properties": {"audience_id": {"type": "string"}}},
+            data_format={"response_schema_types": ["object"]},
+        ),
+        SimpleNamespace(
+            id=uuid4(),
+            action_id=uuid4(),
+            name="generatePushVariants",
+            description="Generate push texts for campaign",
+            input_schema={"type": "object", "required": ["audience_id", "campaign_name"]},
+            output_schema={"type": "object", "properties": {"variants": {"type": "array"}}},
+            data_format={"response_schema_types": ["object"]},
+        ),
+    ]
+    selected = [
+        SelectedCapability(capability=capability, score=0.2, confidence_tier="low")
+        for capability in capabilities
+    ]
+
+    question = service._build_low_confidence_question_ru(
+        question_number=2,
+        message="Собери маркетинговый сценарий",
+        dialog_messages=[{"role": "user", "content": "Нужна маркетинговая кампания"}],
+        selected_capabilities=selected,
+    )
+
+    assert "kpi" in question.lower() or "канал" in question.lower()
+    assert "segment_ids" not in question.lower()
+    assert "forecast_id" not in question.lower()
+    assert "audience_id" not in question.lower()
+    assert "campaign_name" not in question.lower()
 
 
 def test_low_confidence_attempts_1_2_then_build_on_3rd():

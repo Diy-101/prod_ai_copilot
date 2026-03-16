@@ -1,655 +1,473 @@
-openapi: 3.1.0
+openapi: 3.0.3
 info:
-  title: Travel Product Manager API
-  description: 'Synthetic API with multiple linear demo workflows.
-
+  title: Demo Backend - All Linear Scenarios
+  version: 1.0.0
+  description: |
+    Lightweight demo API with only linear workflows.
 
     Travel workflow:
-
-    1. `GET /users/recent`
-
-    2. `GET /hotels/top`
-
-    3. `POST /segments/hotel`
-
-    4. `POST /assignments/hotels`
-
-    5. `POST /emails/send-offers`
-
+    1) GET /users/recent
+    2) GET /hotels/top
+    3) POST /segments/hotel
+    4) POST /assignments/hotels
+    5) POST /emails/send-offers
 
     CRM workflow:
-
-    1. `GET /crm/leads/recent`
-
-    2. `POST /crm/leads/qualify`
-
-    3. `POST /crm/offers/prepare`
-
-    4. `POST /crm/offers/send`'
-  version: 1.0.0
+    1) GET /crm/leads/recent
+    2) POST /crm/leads/qualify
+    3) POST /crm/offers/prepare
+    4) POST /crm/offers/send
+servers:
+  - url: http://demo-api:8010
+  - url: http://localhost:8010
 paths:
   /users/recent:
     get:
-      tags:
-      - travel-offer-workflow
-      summary: Get Recent Users
       operationId: getRecentUsers
+      tags: [travel-offer-workflow]
+      summary: Get recent users
       parameters:
-      - name: last_active_after
-        in: query
-        required: false
-        schema:
-          anyOf:
-          - type: string
+        - in: query
+          name: last_active_after
+          required: false
+          schema:
+            type: string
             format: date-time
-          - type: 'null'
-          title: Last Active After
-      - name: limit
-        in: query
-        required: false
-        schema:
-          type: integer
-          maximum: 100
-          minimum: 1
-          default: 30
-          title: Limit
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 30
       responses:
-        '200':
-          description: Successful Response
+        "200":
+          description: Users list
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RecentUsersResponse'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                $ref: "#/components/schemas/RecentUsersResponse"
+
   /hotels/top:
     get:
-      tags:
-      - travel-offer-workflow
-      summary: Get Top Hotels
       operationId: getTopHotels
+      tags: [travel-offer-workflow]
+      summary: Get top hotels
       parameters:
-      - name: limit
-        in: query
-        required: false
-        schema:
-          type: integer
-          maximum: 20
-          minimum: 1
-          default: 5
-          title: Limit
-      - name: city
-        in: query
-        required: false
-        schema:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: City
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 20
+            default: 5
+        - in: query
+          name: city
+          required: false
+          schema:
+            type: string
       responses:
-        '200':
-          description: Successful Response
+        "200":
+          description: Hotels list
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TopHotelsResponse'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                $ref: "#/components/schemas/TopHotelsResponse"
+
   /segments/hotel:
     post:
-      tags:
-      - travel-offer-workflow
-      summary: Segment Users By Hotel Preferences
       operationId: segmentUsersByHotelPreferences
+      tags: [travel-offer-workflow]
+      summary: Build hotel segments from users and hotels
       requestBody:
+        required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/HotelSegmentsRequest'
-        required: true
+              $ref: "#/components/schemas/HotelSegmentsRequest"
       responses:
-        '200':
-          description: Successful Response
+        "200":
+          description: Segments payload
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HotelSegmentsResponse'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                $ref: "#/components/schemas/HotelSegmentsResponse"
+
   /assignments/hotels:
     post:
-      tags:
-      - travel-offer-workflow
-      summary: Assign Users To Hotels
       operationId: assignUsersToHotels
+      tags: [travel-offer-workflow]
+      summary: Build user-hotel assignments
       requestBody:
+        required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/AssignmentsRequest'
-        required: true
+              $ref: "#/components/schemas/AssignmentsRequest"
       responses:
-        '200':
-          description: Successful Response
+        "200":
+          description: Assignments payload
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AssignmentsResponse'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                $ref: "#/components/schemas/AssignmentsResponse"
+
   /emails/send-offers:
     post:
-      tags:
-      - travel-offer-workflow
-      summary: Send Hotel Offers By Email
       operationId: sendHotelOffersByEmail
+      tags: [travel-offer-workflow]
+      summary: Send travel offers by email
       requestBody:
+        required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/EmailOfferRequest'
-        required: true
+              $ref: "#/components/schemas/EmailOfferRequest"
       responses:
-        '200':
-          description: Successful Response
+        "200":
+          description: Send summary
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/EmailOfferResponse'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                $ref: "#/components/schemas/EmailOfferResponse"
+
   /crm/leads/recent:
     get:
-      tags:
-      - crm-linear-workflow
-      summary: Get Recent Leads
       operationId: getRecentLeads
+      tags: [crm-linear-workflow]
+      summary: Get recent leads
       parameters:
-      - name: limit
-        in: query
-        required: false
-        schema:
-          type: integer
-          maximum: 50
-          minimum: 1
-          default: 20
-          title: Limit
-      - name: source
-        in: query
-        required: false
-        schema:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: Source
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+        - in: query
+          name: source
+          required: false
+          schema:
+            type: string
       responses:
-        '200':
-          description: Successful Response
+        "200":
+          description: Leads list
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RecentLeadsResponse'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                $ref: "#/components/schemas/RecentLeadsResponse"
+
   /crm/leads/qualify:
     post:
-      tags:
-      - crm-linear-workflow
-      summary: Qualify Leads For Offer
       operationId: qualifyLeadsForOffer
+      tags: [crm-linear-workflow]
+      summary: Qualify leads
       requestBody:
+        required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/QualifyLeadsRequest'
-        required: true
+              $ref: "#/components/schemas/QualifyLeadsRequest"
       responses:
-        '200':
-          description: Successful Response
+        "200":
+          description: Qualified leads payload
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/QualifyLeadsResponse'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                $ref: "#/components/schemas/QualifyLeadsResponse"
+
   /crm/offers/prepare:
     post:
-      tags:
-      - crm-linear-workflow
-      summary: Prepare Offers For Leads
       operationId: prepareOffersForLeads
+      tags: [crm-linear-workflow]
+      summary: Prepare offers from qualified leads
       requestBody:
+        required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/PrepareOffersRequest'
-        required: true
+              $ref: "#/components/schemas/PrepareOffersRequest"
       responses:
-        '200':
-          description: Successful Response
+        "200":
+          description: Prepared offers payload
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PrepareOffersResponse'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                $ref: "#/components/schemas/PrepareOffersResponse"
+
   /crm/offers/send:
     post:
-      tags:
-      - crm-linear-workflow
-      summary: Send Prepared Offers
       operationId: sendPreparedOffers
+      tags: [crm-linear-workflow]
+      summary: Send prepared offers
       requestBody:
+        required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/SendOffersRequest'
-        required: true
+              $ref: "#/components/schemas/SendOffersRequest"
       responses:
-        '200':
-          description: Successful Response
+        "200":
+          description: Send summary
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SendOffersResponse'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /health:
-    get:
-      summary: Health
-      operationId: health_health_get
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                additionalProperties:
-                  type: string
-                type: object
-                title: Response Health Health Get
+                $ref: "#/components/schemas/SendOffersResponse"
+
 components:
   schemas:
-    Assignment:
-      properties:
-        user_id:
-          type: string
-          title: User Id
-        hotel_id:
-          type: string
-          title: Hotel Id
-      type: object
-      required:
-      - user_id
-      - hotel_id
-      title: Assignment
-    AssignmentsRequest:
-      properties:
-        segments:
-          items:
-            $ref: '#/components/schemas/Segment'
-          type: array
-          title: Segments
-      type: object
-      title: AssignmentsRequest
-    AssignmentsResponse:
-      properties:
-        assignments:
-          items:
-            $ref: '#/components/schemas/Assignment'
-          type: array
-          title: Assignments
-      type: object
-      title: AssignmentsResponse
-    EmailOfferRequest:
-      properties:
-        template_id:
-          type: string
-          title: Template Id
-        assignments:
-          items:
-            $ref: '#/components/schemas/Assignment'
-          type: array
-          title: Assignments
-      type: object
-      required:
-      - template_id
-      title: EmailOfferRequest
-    EmailOfferResponse:
-      properties:
-        sent_count:
-          type: integer
-          title: Sent Count
-        failed_count:
-          type: integer
-          title: Failed Count
-        failed:
-          items:
-            $ref: '#/components/schemas/FailedDelivery'
-          type: array
-          title: Failed
-      type: object
-      required:
-      - sent_count
-      - failed_count
-      title: EmailOfferResponse
-    FailedDelivery:
-      properties:
-        user_id:
-          type: string
-          title: User Id
-        reason:
-          type: string
-          title: Reason
-      type: object
-      required:
-      - user_id
-      - reason
-      title: FailedDelivery
-    FailedLeadDelivery:
-      properties:
-        lead_id:
-          type: string
-          title: Lead Id
-        reason:
-          type: string
-          title: Reason
-      type: object
-      required:
-      - lead_id
-      - reason
-      title: FailedLeadDelivery
-    HTTPValidationError:
-      properties:
-        detail:
-          items:
-            $ref: '#/components/schemas/ValidationError'
-          type: array
-          title: Detail
-      type: object
-      title: HTTPValidationError
-    Hotel:
-      properties:
-        id:
-          type: string
-          title: Id
-        name:
-          type: string
-          title: Name
-        city:
-          type: string
-          title: City
-      type: object
-      required:
-      - id
-      - name
-      - city
-      title: Hotel
-    HotelSegmentsRequest:
-      properties:
-        users:
-          items:
-            $ref: '#/components/schemas/User'
-          type: array
-          title: Users
-        hotels:
-          items:
-            $ref: '#/components/schemas/Hotel'
-          type: array
-          title: Hotels
-      type: object
-      title: HotelSegmentsRequest
-    HotelSegmentsResponse:
-      properties:
-        segments:
-          items:
-            $ref: '#/components/schemas/Segment'
-          type: array
-          title: Segments
-      type: object
-      title: HotelSegmentsResponse
-    Lead:
-      properties:
-        lead_id:
-          type: string
-          title: Lead Id
-        email:
-          type: string
-          title: Email
-        source:
-          type: string
-          title: Source
-      type: object
-      required:
-      - lead_id
-      - email
-      - source
-      title: Lead
-    PrepareOffersRequest:
-      properties:
-        qualified_leads:
-          items:
-            $ref: '#/components/schemas/QualifiedLead'
-          type: array
-          title: Qualified Leads
-      type: object
-      title: PrepareOffersRequest
-    PrepareOffersResponse:
-      properties:
-        offers:
-          items:
-            $ref: '#/components/schemas/PreparedOffer'
-          type: array
-          title: Offers
-      type: object
-      title: PrepareOffersResponse
-    PreparedOffer:
-      properties:
-        offer_id:
-          type: string
-          title: Offer Id
-        lead_id:
-          type: string
-          title: Lead Id
-        channel:
-          type: string
-          title: Channel
-        message:
-          type: string
-          title: Message
-      type: object
-      required:
-      - offer_id
-      - lead_id
-      - channel
-      - message
-      title: PreparedOffer
-    QualifiedLead:
-      properties:
-        lead_id:
-          type: string
-          title: Lead Id
-        email:
-          type: string
-          title: Email
-        score:
-          type: integer
-          title: Score
-        tier:
-          type: string
-          title: Tier
-      type: object
-      required:
-      - lead_id
-      - email
-      - score
-      - tier
-      title: QualifiedLead
-    QualifyLeadsRequest:
-      properties:
-        leads:
-          items:
-            $ref: '#/components/schemas/Lead'
-          type: array
-          title: Leads
-      type: object
-      title: QualifyLeadsRequest
-    QualifyLeadsResponse:
-      properties:
-        qualified_leads:
-          items:
-            $ref: '#/components/schemas/QualifiedLead'
-          type: array
-          title: Qualified Leads
-      type: object
-      title: QualifyLeadsResponse
-    RecentLeadsResponse:
-      properties:
-        leads:
-          items:
-            $ref: '#/components/schemas/Lead'
-          type: array
-          title: Leads
-      type: object
-      title: RecentLeadsResponse
-    RecentUsersResponse:
-      properties:
-        users:
-          items:
-            $ref: '#/components/schemas/User'
-          type: array
-          title: Users
-      type: object
-      title: RecentUsersResponse
-    Segment:
-      properties:
-        segment_id:
-          type: string
-          title: Segment Id
-        hotel_id:
-          type: string
-          title: Hotel Id
-        user_ids:
-          items:
-            type: string
-          type: array
-          title: User Ids
-      type: object
-      required:
-      - segment_id
-      - hotel_id
-      title: Segment
-    SendOffersRequest:
-      properties:
-        offers:
-          items:
-            $ref: '#/components/schemas/PreparedOffer'
-          type: array
-          title: Offers
-      type: object
-      title: SendOffersRequest
-    SendOffersResponse:
-      properties:
-        sent_count:
-          type: integer
-          title: Sent Count
-        failed_count:
-          type: integer
-          title: Failed Count
-        failed:
-          items:
-            $ref: '#/components/schemas/FailedLeadDelivery'
-          type: array
-          title: Failed
-      type: object
-      required:
-      - sent_count
-      - failed_count
-      title: SendOffersResponse
-    TopHotelsResponse:
-      properties:
-        hotels:
-          items:
-            $ref: '#/components/schemas/Hotel'
-          type: array
-          title: Hotels
-      type: object
-      title: TopHotelsResponse
     User:
+      type: object
+      required: [id, email, last_active]
       properties:
         id:
           type: string
-          title: Id
         email:
           type: string
-          title: Email
+          format: email
         last_active:
           type: string
           format: date-time
-          title: Last Active
+
+    Hotel:
       type: object
-      required:
-      - id
-      - email
-      - last_active
-      title: User
-    ValidationError:
+      required: [id, name, city]
       properties:
-        loc:
-          items:
-            anyOf:
-            - type: string
-            - type: integer
-          type: array
-          title: Location
-        msg:
+        id:
           type: string
-          title: Message
-        type:
+        name:
           type: string
-          title: Error Type
+        city:
+          type: string
+
+    Segment:
       type: object
-      required:
-      - loc
-      - msg
-      - type
-      title: ValidationError
-servers:
-- url: https://team-29-main2-8f6819.pages.prodcontest.ru/demo-api
-- url: http://demo-api:8010
+      required: [segment_id, hotel_id, user_ids]
+      properties:
+        segment_id:
+          type: string
+        hotel_id:
+          type: string
+        user_ids:
+          type: array
+          items:
+            type: string
+
+    Assignment:
+      type: object
+      required: [user_id, hotel_id]
+      properties:
+        user_id:
+          type: string
+        hotel_id:
+          type: string
+
+    RecentUsersResponse:
+      type: object
+      required: [users]
+      properties:
+        users:
+          type: array
+          items:
+            $ref: "#/components/schemas/User"
+
+    TopHotelsResponse:
+      type: object
+      required: [hotels]
+      properties:
+        hotels:
+          type: array
+          items:
+            $ref: "#/components/schemas/Hotel"
+
+    HotelSegmentsRequest:
+      type: object
+      required: [users, hotels]
+      properties:
+        users:
+          type: array
+          items:
+            $ref: "#/components/schemas/User"
+        hotels:
+          type: array
+          items:
+            $ref: "#/components/schemas/Hotel"
+
+    HotelSegmentsResponse:
+      type: object
+      required: [segments]
+      properties:
+        segments:
+          type: array
+          items:
+            $ref: "#/components/schemas/Segment"
+
+    AssignmentsRequest:
+      type: object
+      required: [segments]
+      properties:
+        segments:
+          type: array
+          items:
+            $ref: "#/components/schemas/Segment"
+
+    AssignmentsResponse:
+      type: object
+      required: [assignments]
+      properties:
+        assignments:
+          type: array
+          items:
+            $ref: "#/components/schemas/Assignment"
+
+    EmailOfferRequest:
+      type: object
+      required: [template_id, assignments]
+      properties:
+        template_id:
+          type: string
+          default: offer_template_2026
+        assignments:
+          type: array
+          items:
+            $ref: "#/components/schemas/Assignment"
+
+    FailedDelivery:
+      type: object
+      required: [user_id, reason]
+      properties:
+        user_id:
+          type: string
+        reason:
+          type: string
+
+    EmailOfferResponse:
+      type: object
+      required: [sent_count, failed_count, failed]
+      properties:
+        sent_count:
+          type: integer
+        failed_count:
+          type: integer
+        failed:
+          type: array
+          items:
+            $ref: "#/components/schemas/FailedDelivery"
+
+    Lead:
+      type: object
+      required: [lead_id, email, source]
+      properties:
+        lead_id:
+          type: string
+        email:
+          type: string
+          format: email
+        source:
+          type: string
+
+    QualifiedLead:
+      type: object
+      required: [lead_id, email, score, tier]
+      properties:
+        lead_id:
+          type: string
+        email:
+          type: string
+          format: email
+        score:
+          type: integer
+        tier:
+          type: string
+
+    PreparedOffer:
+      type: object
+      required: [offer_id, lead_id, channel, message]
+      properties:
+        offer_id:
+          type: string
+        lead_id:
+          type: string
+        channel:
+          type: string
+        message:
+          type: string
+
+    RecentLeadsResponse:
+      type: object
+      required: [leads]
+      properties:
+        leads:
+          type: array
+          items:
+            $ref: "#/components/schemas/Lead"
+
+    QualifyLeadsRequest:
+      type: object
+      required: [leads]
+      properties:
+        leads:
+          type: array
+          items:
+            $ref: "#/components/schemas/Lead"
+
+    QualifyLeadsResponse:
+      type: object
+      required: [qualified_leads]
+      properties:
+        qualified_leads:
+          type: array
+          items:
+            $ref: "#/components/schemas/QualifiedLead"
+
+    PrepareOffersRequest:
+      type: object
+      required: [qualified_leads]
+      properties:
+        qualified_leads:
+          type: array
+          items:
+            $ref: "#/components/schemas/QualifiedLead"
+
+    PrepareOffersResponse:
+      type: object
+      required: [offers]
+      properties:
+        offers:
+          type: array
+          items:
+            $ref: "#/components/schemas/PreparedOffer"
+
+    SendOffersRequest:
+      type: object
+      required: [offers]
+      properties:
+        offers:
+          type: array
+          items:
+            $ref: "#/components/schemas/PreparedOffer"
+
+    FailedLeadDelivery:
+      type: object
+      required: [lead_id, reason]
+      properties:
+        lead_id:
+          type: string
+        reason:
+          type: string
+
+    SendOffersResponse:
+      type: object
+      required: [sent_count, failed_count, failed]
+      properties:
+        sent_count:
+          type: integer
+        failed_count:
+          type: integer
+        failed:
+          type: array
+          items:
+            $ref: "#/components/schemas/FailedLeadDelivery"

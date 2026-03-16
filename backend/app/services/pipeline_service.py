@@ -22,6 +22,10 @@ class PipelineService:
     LOW_CONFIDENCE_MAX_QUESTIONS = 2
     LOW_CONFIDENCE_QUESTION_MARKER = "нужно уточнить цель, чтобы построить точный сценарий"
     LOW_CONFIDENCE_DIALOG_MARKER = "[[low_confidence_question]]"
+    CLARIFICATION_DOMAIN_MARKETING = "marketing"
+    CLARIFICATION_DOMAIN_TRAVEL = "travel"
+    CLARIFICATION_DOMAIN_CRM = "crm"
+    CLARIFICATION_DOMAIN_GENERIC = "generic"
 
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
@@ -611,17 +615,14 @@ class PipelineService:
             return llm_question
 
         if question_number >= 2:
-            required_fields = set()
-            for sc in selected_capabilities:
-                required = self._extract_required_inputs(sc.capability.input_schema)
-                required_fields.update(required)
-            if required_fields:
-                fields_str = ", ".join(sorted(required_fields))
-                return f"Мне не хватает данных для точного сценария. Пожалуйста, укажите: {fields_str}."
+            return (
+                "Уточните бизнес-правила сценария: какую аудиторию берем, "
+                "какое действие финальное и по какому критерию считаем результат успешным."
+            )
 
         return (
-            "Я не уверен, как правильно собрать этот сценарий. "
-            "Опишите подробнее, что именно вы хотите получить в итоге."
+            "Чтобы собрать корректный сценарий, уточните целевой бизнес-результат "
+            "(например: сегмент, рассылка, обновление CRM или отчет)."
         )
 
     def _generate_clarification_question_ru(
@@ -635,77 +636,124 @@ class PipelineService:
         if not selected_capabilities:
             return None
 
-        message_tokens = self._tokenize_text(message or "")
-        output_candidates: list[str] = []
-        required_inputs: list[str] = []
-        capability_names: list[str] = []
-
-        for item in selected_capabilities[:6]:
-            cap = item.capability
-            capability_name = str(getattr(cap, "name", "") or "").strip()
-            if capability_name:
-                capability_names.append(capability_name)
-
-            for field in self._extract_output_fields(getattr(cap, "output_schema", None)):
-                if field not in output_candidates:
-                    output_candidates.append(field)
-
-            for field in self._extract_required_inputs(getattr(cap, "input_schema", None)):
-                if field not in required_inputs:
-                    required_inputs.append(field)
-
-        if not capability_names:
-            return None
-
-        capability_hint = ", ".join(capability_names[:3])
-        mentioned_outputs = {
-            field
-            for field in output_candidates
-            if field.lower() in message_tokens
-        }
-        mentioned_inputs = {
-            field
-            for field in required_inputs
-            if field.lower() in message_tokens
-        }
-
-        if question_number >= 2 and required_inputs:
-            options = ", ".join(required_inputs[:5])
-            return (
-                f"Чтобы правильно связать доступные шаги ({capability_hint}), "
-                f"уточните входные данные: {options}."
-            )
-
-        if output_candidates and not mentioned_outputs:
-            options = ", ".join(output_candidates[:4])
-            return (
-                f"Чтобы собрать корректный сценарий по шагам ({capability_hint}), "
-                f"какой финальный результат нужен: {options}?"
-            )
-
-        if required_inputs and len(mentioned_inputs) < min(2, len(required_inputs)):
-            options = ", ".join(required_inputs[:5])
-            return (
-                f"Чтобы правильно связать доступные шаги ({capability_hint}), "
-                f"уточните входные данные: {options}."
-            )
-
-        recent_user_messages = [
-            str(msg.get("content") or "").strip()
-            for msg in dialog_messages[-4:]
-            if isinstance(msg, dict) and msg.get("role") == "user"
-        ]
-        context_hint = " / ".join(chunk for chunk in recent_user_messages if chunk)[:180]
-        if context_hint:
-            return (
-                "Уточните критерий выполнения сценария: по какому правилу считать результат успешным "
-                f"для задачи «{context_hint}»?"
-            )
-
-        return (
-            f"Чтобы корректно собрать сценарий из доступных шагов ({capability_hint}), "
-            "уточните ожидаемый результат и ключевые входные данные."
+        domain = self._detect_clarification_domain(
+            message=message,
+            dialog_messages=dialog_messages,
+            selected_capabilities=selected_capabilities,
         )
+
+        if question_number >= 2:
+            if domain == self.CLARIFICATION_DOMAIN_MARKETING:
+                return (
+                    "Уточните бизнес-правила кампании: какую аудиторию берем, "
+                    "какой канал используем и по какому KPI оцениваем успех."
+                )
+            if domain == self.CLARIFICATION_DOMAIN_TRAVEL:
+                return (
+                    "Уточните условия travel-сценария: для какой аудитории/направления "
+                    "делаем подбор и как измеряем успешный результат."
+                )
+            if domain == self.CLARIFICATION_DOMAIN_CRM:
+                return (
+                    "Уточните правила CRM-сценария: кого включаем в обработку, "
+                    "какое финальное действие выполняем и какой критерий успеха используем."
+                )
+            return (
+                "Уточните бизнес-правила сценария: какие данные берем на вход, "
+                "какое действие финальное и по какому критерию считаем успех."
+            )
+
+        if domain == self.CLARIFICATION_DOMAIN_MARKETING:
+            return (
+                "Какой маркетинговый результат нужен в итоге: рост охвата, реактивация, "
+                "рост конверсии или запуск кампании на выбранный сегмент?"
+            )
+        if domain == self.CLARIFICATION_DOMAIN_TRAVEL:
+            return (
+                "Какой итог travel-сценария нужен: сегментация пользователей по отелям, "
+                "персональные офферы или финальная рассылка предложений?"
+            )
+        if domain == self.CLARIFICATION_DOMAIN_CRM:
+            return (
+                "Какой результат по CRM нужен: квалификация лидов, подготовка офферов "
+                "или запуск финальной коммуникации?"
+            )
+        return (
+            "Какой финальный бизнес-результат нужен: сегмент, рассылка, "
+            "обновление CRM или отчет?"
+        )
+
+    def _detect_clarification_domain(
+        self,
+        *,
+        message: str,
+        dialog_messages: list[dict[str, Any]],
+        selected_capabilities: list[SelectedCapability],
+    ) -> str:
+        chunks: list[str] = [str(message or "")]
+        chunks.extend(
+            str(msg.get("content") or "")
+            for msg in dialog_messages[-4:]
+            if isinstance(msg, dict)
+        )
+        for item in selected_capabilities[:8]:
+            cap = item.capability
+            chunks.append(str(getattr(cap, "name", "") or ""))
+            chunks.append(str(getattr(cap, "description", "") or ""))
+
+        haystack = " ".join(chunk.lower() for chunk in chunks if chunk).strip()
+        if not haystack:
+            return self.CLARIFICATION_DOMAIN_GENERIC
+
+        marketing_markers = (
+            "marketing",
+            "campaign",
+            "audience",
+            "forecast",
+            "push",
+            "segment",
+            "kpi",
+            "маркет",
+            "кампан",
+            "аудитор",
+            "охват",
+            "пуш",
+            "сегмент",
+            "конверс",
+            "реактива",
+        )
+        travel_markers = (
+            "travel",
+            "hotel",
+            "hotels",
+            "trip",
+            "offer",
+            "offers",
+            "отел",
+            "travel",
+            "путеше",
+            "оффер",
+        )
+        crm_markers = (
+            "crm",
+            "lead",
+            "leads",
+            "pipeline",
+            "qualification",
+            "qualify",
+            "лид",
+            "ворон",
+            "сделк",
+            "квалиф",
+        )
+
+        if any(marker in haystack for marker in marketing_markers):
+            return self.CLARIFICATION_DOMAIN_MARKETING
+        if any(marker in haystack for marker in travel_markers):
+            return self.CLARIFICATION_DOMAIN_TRAVEL
+        if any(marker in haystack for marker in crm_markers):
+            return self.CLARIFICATION_DOMAIN_CRM
+        return self.CLARIFICATION_DOMAIN_GENERIC
 
     def _normalize_workflow(
         self,
