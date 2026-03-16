@@ -156,6 +156,76 @@ def test_prune_edges_by_required_inputs_removes_extra_edge():
     assert pruned == [{"from_step": 3, "to_step": 4, "type": "segments"}]
 
 
+def test_augment_edges_for_required_inputs_builds_linear_data_flow_chain():
+    service = _build_service()
+    nodes = [
+        {
+            "step": 1,
+            "external_inputs": [],
+            "input_data_type_from_previous": [],
+            "endpoints": [
+                {
+                    "input_type": {"type": "object", "required": []},
+                    "output_type": {"type": "object", "properties": {"users": {"type": "array"}}},
+                }
+            ],
+        },
+        {
+            "step": 2,
+            "external_inputs": [],
+            "input_data_type_from_previous": [],
+            "endpoints": [
+                {
+                    "input_type": {"type": "object", "required": []},
+                    "output_type": {"type": "object", "properties": {"hotels": {"type": "array"}}},
+                }
+            ],
+        },
+        {
+            "step": 3,
+            "external_inputs": [],
+            "input_data_type_from_previous": [],
+            "endpoints": [
+                {
+                    "input_type": {"type": "object", "required": ["users", "hotels"]},
+                    "output_type": {"type": "object", "properties": {"segments": {"type": "array"}}},
+                }
+            ],
+        },
+        {
+            "step": 4,
+            "external_inputs": [],
+            "input_data_type_from_previous": [],
+            "endpoints": [
+                {
+                    "input_type": {"type": "object", "required": ["segments"]},
+                    "output_type": {"type": "object", "properties": {"assignments": {"type": "array"}}},
+                }
+            ],
+        },
+        {
+            "step": 5,
+            "external_inputs": ["template_id"],
+            "input_data_type_from_previous": [],
+            "endpoints": [
+                {
+                    "input_type": {"type": "object", "required": ["template_id", "assignments"]},
+                    "output_type": {"type": "object", "properties": {"sent_count": {"type": "integer"}}},
+                }
+            ],
+        },
+    ]
+
+    augmented = service._augment_edges_for_required_inputs(nodes, [])
+    keys = {(item["from_step"], item["to_step"], item["type"]) for item in augmented}
+
+    assert (1, 3, "users") in keys
+    assert (2, 3, "hotels") in keys
+    assert (3, 4, "segments") in keys
+    assert (4, 5, "assignments") in keys
+    assert all(edge_type != "template_id" for _, _, edge_type in keys)
+
+
 def test_ensure_external_inputs_adds_missing_for_final_step():
     service = _build_service()
     nodes = [
@@ -170,6 +240,34 @@ def test_ensure_external_inputs_adds_missing_for_final_step():
     service._ensure_external_inputs(nodes, edges)
 
     assert nodes[0]["external_inputs"] == ["segments"]
+
+
+def test_ensure_external_inputs_does_not_add_when_graph_has_internal_producer():
+    service = _build_service()
+    nodes = [
+        {
+            "step": 1,
+            "external_inputs": [],
+            "endpoints": [{"input_type": {"type": "object", "required": ["segments"]}}],
+        },
+        {
+            "step": 3,
+            "external_inputs": [],
+            "endpoints": [
+                {
+                    "output_type": {
+                        "type": "object",
+                        "properties": {"segments": {"type": "array"}},
+                    }
+                }
+            ],
+        },
+    ]
+    edges: list[dict[str, str | int]] = []
+
+    service._ensure_external_inputs(nodes, edges)
+
+    assert nodes[0]["external_inputs"] == []
 
 
 def test_validate_ready_graph_rejects_multiple_nodes_without_edges():
@@ -292,7 +390,7 @@ def test_second_clarification_question_mentions_missing_required_inputs():
     assert "token" in question.lower()
 
 
-def test_low_confidence_attempts_1_2_then_build_on_3rd():
+def test_low_confidence_attempt_1_then_build_on_2nd():
     service = _build_service()
     capability = _build_capability()
     selected = [
@@ -329,7 +427,7 @@ def test_low_confidence_attempts_1_2_then_build_on_3rd():
     dialog_id = uuid4()
     user_id = uuid4()
     responses = []
-    for _ in range(2):
+    for _ in range(1):
         result = asyncio.run(
             service.generate(
                 dialog_id=dialog_id,
@@ -342,7 +440,6 @@ def test_low_confidence_attempts_1_2_then_build_on_3rd():
         assert graph_called["value"] is False
 
     assert "уточнение" not in responses[0]["chat_reply_ru"].lower()
-    assert "уточнение" not in responses[1]["chat_reply_ru"].lower()
 
     result = asyncio.run(
         service.generate(

@@ -19,7 +19,7 @@ class PipelineServiceError(Exception):
 
 
 class PipelineService:
-    LOW_CONFIDENCE_MAX_QUESTIONS = 2
+    LOW_CONFIDENCE_MAX_QUESTIONS = 1
     LOW_CONFIDENCE_QUESTION_MARKER = "нужно уточнить цель, чтобы построить точный сценарий"
     LOW_CONFIDENCE_DIALOG_MARKER = "[[low_confidence_question]]"
     STRICT_CAPABILITY_ISSUES = {
@@ -287,6 +287,10 @@ class PipelineService:
             raw_graph, selected_capabilities
         )
         normalized_edges = self._repair_edges_with_data_flow(normalized_nodes, normalized_edges)
+        normalized_edges = self._augment_edges_for_required_inputs(
+            normalized_nodes,
+            normalized_edges,
+        )
         self._sync_node_connections(normalized_nodes, normalized_edges)
         self._ensure_external_inputs(normalized_nodes, normalized_edges)
 
@@ -296,6 +300,10 @@ class PipelineService:
             selected_capabilities,
         )
         reviewed_edges = self._repair_edges_with_data_flow(reviewed_nodes, reviewed_edges)
+        reviewed_edges = self._augment_edges_for_required_inputs(
+            reviewed_nodes,
+            reviewed_edges,
+        )
         reviewed_edges = self._prune_edges_for_terminal_goal(reviewed_nodes, reviewed_edges)
         reviewed_edges = self._prune_edges_by_required_inputs(reviewed_nodes, reviewed_edges)
         reviewed_nodes, reviewed_edges = self._prune_disconnected_nodes(
@@ -797,7 +805,7 @@ class PipelineService:
     ) -> int:
         count = 0
         # Count only the current clarification chain (from the end of dialog),
-        # so each new request can start a fresh 2-step clarification when needed.
+        # so each new request can start a fresh clarification when needed.
         for item in reversed(dialog_messages):
             if not isinstance(item, dict):
                 continue
@@ -1374,6 +1382,130 @@ class PipelineService:
             )
         return sanitized
 
+    def _augment_edges_for_required_inputs(
+        self,
+        nodes: list[dict[str, Any]],
+        edges: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        if not nodes:
+            return edges
+
+        known_steps = {
+            step for node in nodes if isinstance((step := node.get("step")), int)
+        }
+        if len(known_steps) <= 1:
+            return edges
+
+        augmented = list(edges)
+        existing_keys = {
+            (
+                edge.get("from_step"),
+                edge.get("to_step"),
+                str(edge.get("type") or "").strip(),
+            )
+            for edge in augmented
+            if isinstance(edge, dict)
+        }
+        edges_by_target: dict[int, set[str]] = {}
+        for edge in augmented:
+            src = edge.get("from_step")
+            dst = edge.get("to_step")
+            edge_type = edge.get("type")
+            if (
+                isinstance(src, int)
+                and isinstance(dst, int)
+                and isinstance(edge_type, str)
+                and edge_type.strip()
+            ):
+                edges_by_target.setdefault(dst, set()).add(edge_type.strip())
+
+        produced_fields_by_step: dict[int, set[str]] = {}
+        for node in nodes:
+            step = node.get("step")
+            if not isinstance(step, int):
+                continue
+            produced_fields_by_step[step] = self._extract_output_fields_from_node(node)
+
+        sorted_nodes = sorted(
+            (node for node in nodes if isinstance(node.get("step"), int)),
+            key=lambda item: int(item["step"]),
+        )
+
+        for node in sorted_nodes:
+            to_step = int(node["step"])
+            required_inputs = self._extract_required_inputs_from_node(node)
+            if not required_inputs:
+                continue
+
+            external_inputs = set(self._normalize_str_list(node.get("external_inputs")))
+            incoming_types = edges_by_target.get(to_step, set())
+            explicit_inputs = self._normalize_input_data_types(
+                node.get("input_data_type_from_previous")
+            )
+
+            for required_input in required_inputs:
+                if self._is_input_satisfied_by_values(required_input, incoming_types):
+                    continue
+                if self._is_input_satisfied_by_values(required_input, external_inputs):
+                    continue
+
+                explicit_sources = [
+                    int(item["from_step"])
+                    for item in explicit_inputs
+                    if isinstance(item.get("from_step"), int)
+                    and isinstance(item.get("type"), str)
+                    and self._field_alias_matches(
+                        edge_type=str(item["type"]),
+                        expected_input=required_input,
+                    )
+                    and int(item["from_step"]) in known_steps
+                    and int(item["from_step"]) != to_step
+                ]
+                explicit_source = max(explicit_sources) if explicit_sources else None
+
+                candidate_sources = [
+                    step
+                    for step, produced in produced_fields_by_step.items()
+                    if step != to_step
+                    and self._is_input_satisfied_by_values(required_input, produced)
+                ]
+                if explicit_source is not None:
+                    chosen_source = explicit_source
+                else:
+                    previous_candidates = [
+                        step for step in candidate_sources if step < to_step
+                    ]
+                    ordered_candidates = (
+                        sorted(previous_candidates, reverse=True)
+                        if previous_candidates
+                        else sorted(candidate_sources)
+                    )
+                    if len(ordered_candidates) != 1:
+                        continue
+                    chosen_source = ordered_candidates[0]
+
+                edge_key = (chosen_source, to_step, required_input)
+                if edge_key in existing_keys:
+                    continue
+                if self._edge_creates_cycle(
+                    augmented,
+                    from_step=chosen_source,
+                    to_step=to_step,
+                ):
+                    continue
+
+                new_edge = {
+                    "from_step": chosen_source,
+                    "to_step": to_step,
+                    "type": required_input,
+                }
+                augmented.append(new_edge)
+                existing_keys.add(edge_key)
+                edges_by_target.setdefault(to_step, set()).add(required_input)
+                incoming_types = edges_by_target.get(to_step, set())
+
+        return self._repair_edges_with_data_flow(nodes, augmented)
+
     def _prune_edges_for_terminal_goal(
         self,
         nodes: list[dict[str, Any]],
@@ -1537,6 +1669,12 @@ class PipelineService:
             incoming_types = edges_by_target.get(step, set())
             for required_input in required_inputs:
                 if self._is_input_satisfied_by_values(required_input, incoming_types):
+                    continue
+                if self._has_internal_producer_for_input(
+                    required_input=required_input,
+                    current_step=step if isinstance(step, int) else None,
+                    nodes=nodes,
+                ):
                     continue
                 external_inputs.add(required_input)
             node["external_inputs"] = sorted(external_inputs)
@@ -1879,6 +2017,54 @@ class PipelineService:
             if isinstance(input_type, dict)
             else []
         )
+
+    def _has_internal_producer_for_input(
+        self,
+        *,
+        required_input: str,
+        current_step: int | None,
+        nodes: list[dict[str, Any]],
+    ) -> bool:
+        for node in nodes:
+            step = node.get("step")
+            if current_step is not None and isinstance(step, int) and step == current_step:
+                continue
+            produced_fields = self._extract_output_fields_from_node(node)
+            if self._is_input_satisfied_by_values(required_input, produced_fields):
+                return True
+        return False
+
+    def _extract_output_fields_from_node(self, node: dict[str, Any]) -> set[str]:
+        endpoints = node.get("endpoints") or []
+        if not endpoints:
+            return set()
+        output_type = endpoints[0].get("output_type")
+        if not isinstance(output_type, dict):
+            return set()
+
+        produced: set[str] = set()
+        properties = output_type.get("properties")
+        if isinstance(properties, dict):
+            produced.update(
+                str(field_name)
+                for field_name in properties.keys()
+                if isinstance(field_name, (str, int))
+            )
+
+        required = output_type.get("required")
+        if isinstance(required, list):
+            produced.update(str(field_name) for field_name in required if isinstance(field_name, (str, int)))
+
+        items = output_type.get("items")
+        if isinstance(items, dict):
+            nested_properties = items.get("properties")
+            if isinstance(nested_properties, dict):
+                produced.update(
+                    str(field_name)
+                    for field_name in nested_properties.keys()
+                    if isinstance(field_name, (str, int))
+                )
+        return produced
 
     def _normalize_int_list(self, value: Any) -> list[int]:
         if not isinstance(value, list):
