@@ -800,6 +800,15 @@ class ExecutionService:
     ) -> tuple[dict[str, Any], list[str]]:
         resolved: dict[str, Any] = {}
 
+        def add_resolved(key: str, value: Any) -> None:
+            resolved[key] = value
+            # Normalize common edge notation (users[] -> users) so request/body
+            # keys and composite bindings can resolve expected field names.
+            if key.endswith("[]"):
+                normalized = key[:-2]
+                if normalized and normalized not in resolved:
+                    resolved[normalized] = value
+
         for edge in incoming_edges:
             src = edge.get("from_step")
             dst = edge.get("to_step")
@@ -808,14 +817,14 @@ class ExecutionService:
                 continue
             edge_key = self._build_edge_value_key(src, dst, edge_type)
             if edge_key in edge_values:
-                resolved[edge_type] = edge_values[edge_key]
+                add_resolved(edge_type, edge_values[edge_key])
                 continue
             source_output = step_outputs.get(str(src))
             if source_output is None:
                 continue
             value = self._extract_value_from_output(source_output, edge_type)
             if value is not None:
-                resolved[edge_type] = value
+                add_resolved(edge_type, value)
 
         external_inputs = self._normalize_str_list(node.get("external_inputs"))
         for input_name in external_inputs:
