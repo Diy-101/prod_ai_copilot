@@ -193,7 +193,9 @@ const Home: React.FC = () => {
 
             // Update global context with successful actions and capabilities
             addActions(successList);
-            addCapabilities(capabilitiesList);
+            if (capabilitiesList.length > 0) {
+              addCapabilities(capabilitiesList);
+            }
 
             if (filename) {
               setImportedFiles(prev => [...prev, filename]);
