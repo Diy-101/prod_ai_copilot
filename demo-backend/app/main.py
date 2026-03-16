@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import FastAPI, Query
 from pydantic import BaseModel, Field
@@ -449,6 +449,7 @@ async def send_prepared_offers(payload: SendOffersRequest) -> SendOffersResponse
                 )
             )
 
+    sent_count = len(payload.offers) - len(failed)
     return SendOffersResponse(
         sent_count=sent_count,
         failed_count=len(failed),
