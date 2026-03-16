@@ -279,12 +279,17 @@ export const Pipelines: React.FC = () => {
   );
   const [activeRunId, setActiveRunId] = React.useState<string | null>(null);
   const [isRunStarting, setIsRunStarting] = React.useState(false);
-  const pollingTimerRef = React.useRef<ReturnType<typeof window.setInterval> | null>(
-    null
-  );
+  const pollingTimerRef = React.useRef<any>(null);
   const isPollingRequestInFlightRef = React.useRef(false);
   const notifiedTerminalStatusRef = React.useRef<ExecutionRunStatus | null>(null);
-  const [isChatVisible, setIsChatVisible] = React.useState(true);
+  const [isChatVisible, setIsChatVisible] = React.useState(() => {
+    const saved = localStorage.getItem('pipelines_chat_visible');
+    return saved !== null ? saved === 'true' : true;
+  });
+
+  React.useEffect(() => {
+    localStorage.setItem('pipelines_chat_visible', String(isChatVisible));
+  }, [isChatVisible]);
 
   const initialMessage = location.state?.initialMessage;
   const dialogId = location.state?.dialogId;
