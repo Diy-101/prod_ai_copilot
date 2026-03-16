@@ -498,7 +498,7 @@ const PayloadPreview: React.FC<{ payload: unknown; tone: PayloadTone }> = ({
 
 export const Pipelines: React.FC = () => {
   const location = useLocation();
-  const { currentPipeline } = usePipelineContext();
+  const { currentPipeline, isHydrating } = usePipelineContext();
   const [expandedStep, setExpandedStep] = React.useState<number | null>(null);
   const [execution, setExecution] = React.useState<ExecutionRunDetailResponse | null>(
     null
@@ -508,6 +508,8 @@ export const Pipelines: React.FC = () => {
   const pollingTimerRef = React.useRef<number | null>(null);
   const isPollingRequestInFlightRef = React.useRef(false);
   const notifiedTerminalStatusRef = React.useRef<ExecutionRunStatus | null>(null);
+  const lastPipelineIdRef = React.useRef<string | null>(null);
+
   const [isChatVisible, setIsChatVisible] = React.useState(() => {
     const saved = localStorage.getItem('pipelines_chat_visible');
     return saved !== null ? saved === 'true' : true;
@@ -520,6 +522,7 @@ export const Pipelines: React.FC = () => {
   const initialMessage = location.state?.initialMessage;
   const dialogId = location.state?.dialogId;
   const pipelineId = currentPipeline?.pipeline_id || null;
+
   const finalOutput = React.useMemo(
     () => execution?.summary?.final_output,
     [execution]
@@ -528,6 +531,7 @@ export const Pipelines: React.FC = () => {
   const graphLayout = currentPipeline && currentPipeline.nodes.length > 0
     ? buildGraphLayout(currentPipeline)
     : null;
+    
   const stepRunsByStep = React.useMemo(() => {
     const byStep = new Map<number, ExecutionStepRunResponse>();
     execution?.steps.forEach((stepRun) => {
@@ -535,6 +539,7 @@ export const Pipelines: React.FC = () => {
     });
     return byStep;
   }, [execution]);
+
   const runStatusMeta = getRunStatusMeta(execution?.status || null);
   const isExecutionInProgress = execution
     ? !isTerminalRunStatus(execution.status)
@@ -596,7 +601,7 @@ export const Pipelines: React.FC = () => {
       pollExecution(runId).catch(() => null);
       pollingTimerRef.current = window.setInterval(() => {
         pollExecution(runId).catch(() => null);
-      }, 2000);
+      }, 2000) as unknown as number;
     },
     [pollExecution, stopPollingExecution]
   );
@@ -612,6 +617,7 @@ export const Pipelines: React.FC = () => {
       notifiedTerminalStatusRef.current = null;
       const run = await runPipeline(pipelineId);
       setActiveRunId(run.run_id);
+      localStorage.setItem(`pipeline_active_run_${pipelineId}`, run.run_id);
       toast.success('Запуск пайплайна начат');
       startPollingExecution(run.run_id);
     } catch (error) {
@@ -644,12 +650,36 @@ export const Pipelines: React.FC = () => {
     }
   }, [activeRunId, finalOutput]);
 
+  // Handle pipeline ID changes and restore active run state
   React.useEffect(() => {
-    setExecution(null);
-    setActiveRunId(null);
-    notifiedTerminalStatusRef.current = null;
-    stopPollingExecution();
-  }, [pipelineId, stopPollingExecution]);
+    if (pipelineId) {
+      if (pipelineId !== lastPipelineIdRef.current) {
+        // Different pipeline: reset execution state
+        setExecution(null);
+        setActiveRunId(null);
+        notifiedTerminalStatusRef.current = null;
+        stopPollingExecution();
+        lastPipelineIdRef.current = pipelineId;
+
+        // Try to restore previous active run for this pipeline from storage
+        const savedRunId = localStorage.getItem(`pipeline_active_run_${pipelineId}`);
+        if (savedRunId) {
+          setActiveRunId(savedRunId);
+          startPollingExecution(savedRunId);
+        }
+      }
+    } else {
+      // If pipeline goes null (e.g. during hydration), we don't clear the state immediately
+      // to avoid visual flickering. We only clear it if it stays null and we are not hydrating.
+      if (!isHydrating) {
+        setExecution(null);
+        setActiveRunId(null);
+        notifiedTerminalStatusRef.current = null;
+        stopPollingExecution();
+        lastPipelineIdRef.current = null;
+      }
+    }
+  }, [pipelineId, isHydrating, stopPollingExecution, startPollingExecution]);
 
   React.useEffect(() => {
     return () => {
@@ -667,7 +697,12 @@ export const Pipelines: React.FC = () => {
             <p className="text-sm text-muted-foreground">Визуализация текущего процесса автоматизации</p>
           </div>
 
-          {graphLayout && currentPipeline ? (
+          {isHydrating ? (
+            <div className="flex flex-col items-center justify-center py-20 space-y-4">
+              <Loader2 className="h-12 w-12 animate-spin text-primary/40" />
+              <p className="text-sm text-muted-foreground animate-pulse">Восстановление данных сессии...</p>
+            </div>
+          ) : graphLayout && currentPipeline ? (
             <div
               className="relative mx-auto"
               style={{
@@ -675,6 +710,7 @@ export const Pipelines: React.FC = () => {
                 height: graphLayout.height,
               }}
             >
+              {/* SVG and Nodes rendering logic... */}
               <svg
                 className="absolute inset-0 h-full w-full"
                 viewBox={`0 0 ${graphLayout.width} ${graphLayout.height}`}
