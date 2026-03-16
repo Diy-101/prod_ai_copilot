@@ -22,6 +22,10 @@ class PipelineService:
     LOW_CONFIDENCE_MAX_QUESTIONS = 2
     LOW_CONFIDENCE_QUESTION_MARKER = "нужно уточнить цель, чтобы построить точный сценарий"
     LOW_CONFIDENCE_DIALOG_MARKER = "[[low_confidence_question]]"
+    STRICT_CAPABILITY_ISSUES = {
+        "graph:invalid_capability_ref",
+        "graph:missing_capability_ref",
+    }
 
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
@@ -188,8 +192,9 @@ class PipelineService:
             selected_capabilities=selected_capabilities,
         )
         chat_reply = self._build_chat_reply_ru(normalized_nodes, normalized_edges)
+        has_strict_capability_issues = self._has_strict_capability_issues(missing)
 
-        if not is_ready:
+        if not is_ready and not has_strict_capability_issues:
             fallback_raw_graph = self._build_minimal_raw_graph(selected_capabilities)
             if fallback_raw_graph is not None:
                 fallback_nodes, fallback_edges, fallback_ready, fallback_missing = self._prepare_graph(
@@ -206,6 +211,16 @@ class PipelineService:
                     missing = fallback_missing
 
         if not is_ready:
+            if has_strict_capability_issues:
+                chat_reply = (
+                    "Не удалось безопасно собрать сценарий: модель вернула шаги "
+                    "без подтвержденных capability_id. Уточните задачу и повторите запрос."
+                )
+                message_ru = (
+                    "Сценарий отклонен: обнаружены неподтвержденные ссылки на capability."
+                )
+            else:
+                message_ru = "Сценарий не готов к выполнению. Не хватает входных данных."
             await self.dialog_memory.append_and_summarize(
                 str(dialog_id), "user", message
             )
@@ -214,7 +229,7 @@ class PipelineService:
             )
             return {
                 "status": "cannot_build",
-                "message_ru": "Сценарий не готов к выполнению. Не хватает входных данных.",
+                "message_ru": message_ru,
                 "chat_reply_ru": chat_reply,
                 "nodes": normalized_nodes,
                 "edges": normalized_edges,
@@ -473,9 +488,13 @@ class PipelineService:
     ) -> str:
         capabilities_payload = []
         allowed_capability_ids: list[str] = []
+        allowed_capability_ids: list[str] = []
         for sc in selected_capabilities:
             cap = sc.capability
             capabilities_payload.append(self._build_capability_prompt_payload(cap))
+            cap_id = str(getattr(cap, "id", "") or "").strip()
+            if cap_id:
+                allowed_capability_ids.append(cap_id)
             cap_id = str(getattr(cap, "id", "") or "").strip()
             if cap_id:
                 allowed_capability_ids.append(cap_id)
@@ -522,6 +541,7 @@ class PipelineService:
             f"USER_QUERY:\n{user_query}\n\n"
             f"DIALOG_CONTEXT:\n{json.dumps(context_payload, ensure_ascii=False)}\n\n"
             f"ALLOWED_CAPABILITY_IDS:\n{json.dumps(allowed_capability_ids, ensure_ascii=False)}\n\n"
+            f"ALLOWED_CAPABILITY_IDS:\n{json.dumps(allowed_capability_ids, ensure_ascii=False)}\n\n"
             f"CAPABILITIES:\n{json.dumps(capabilities_payload, ensure_ascii=False)}\n\n"
             "OUTPUT_SCHEMA:\n"
             "{\n"
@@ -547,6 +567,9 @@ class PipelineService:
             "- Verify edges and node links are synchronized.\n"
             "- Output final JSON only.\n"
         )
+
+    def _has_strict_capability_issues(self, issues: list[str]) -> bool:
+        return any(issue in self.STRICT_CAPABILITY_ISSUES for issue in issues)
 
     def _build_selection_query(
         self,
@@ -1097,8 +1120,13 @@ class PipelineService:
                 capabilities=capabilities,
                 capabilities_by_id=capabilities_by_id,
             )
-            if capability_id_raw is not None and cap is None:
+            has_explicit_capability_ref = (
+                capability_id_raw is not None and str(capability_id_raw).strip() != ""
+            )
+            if has_explicit_capability_ref and cap is None:
                 issues.append("graph:invalid_capability_ref")
+            elif cap is None and len(capabilities) > 1:
+                issues.append("graph:missing_capability_ref")
 
             if cap is None:
                 endpoints_payload = []
@@ -1291,21 +1319,10 @@ class PipelineService:
         capabilities: list[Any],
         capabilities_by_id: dict[str, Any],
     ) -> Any | None:
-        has_explicit_capability_ref = (
-            capability_id is not None and str(capability_id).strip() != ""
-        )
+        _ = raw_node
+        has_explicit_capability_ref = capability_id is not None and str(capability_id).strip() != ""
         if has_explicit_capability_ref:
-            by_id = capabilities_by_id.get(str(capability_id))
-            if by_id is not None:
-                return by_id
-            by_alias = self._match_capability_by_alias(capabilities, str(capability_id))
-            if by_alias is not None:
-                return by_alias
-
-        for lookup_value in self._collect_node_capability_hints(raw_node):
-            matched = self._match_capability_by_alias(capabilities, lookup_value)
-            if matched is not None:
-                return matched
+            return capabilities_by_id.get(str(capability_id).strip())
 
         if len(capabilities) == 1 and not has_explicit_capability_ref:
             return capabilities[0]

@@ -206,8 +206,11 @@ def test_build_generation_prompt_contains_qwen_coder_contract():
     assert str(capability.id) in prompt
     assert "MERGE_PATTERN_EXAMPLE" in prompt
     assert "SELF-CHECK (INTERNAL ONLY)" in prompt
-    assert "Step 1 produces users" in prompt
-    assert "Step 2 produces hotels" in prompt
+    assert "ALLOWED_CAPABILITY_IDS" in prompt
+    assert str(capability.id) in prompt
+    assert "Никогда не подменяй capability_id" in prompt
+    assert "Step 1 produce users" in prompt
+    assert "Step 2 produce hotels" in prompt
     assert "Step 3 consumes users and hotels" in prompt
 
 
@@ -427,7 +430,7 @@ def test_low_confidence_attempts_1_2_then_build_on_3rd():
     assert result["status"] != "needs_input"
 
 
-def test_generate_invalid_graph_falls_back_to_minimal_ready_pipeline():
+def test_generate_invalid_graph_with_unknown_capability_is_rejected():
     service = _build_service()
     capability = _build_capability()
     service.dialog_memory.get_context = AsyncMock(return_value=([], "ctx summary"))
@@ -459,10 +462,11 @@ def test_generate_invalid_graph_falls_back_to_minimal_ready_pipeline():
         )
     )
 
-    assert result["status"] == "ready"
+    assert result["status"] == "cannot_build"
     assert len(result["nodes"]) == 1
-    assert result["nodes"][0]["endpoints"][0]["capability_id"] == str(capability.id)
-    assert result["nodes"][0]["endpoints"][0]["action_id"] == str(capability.action_id)
+    assert result["nodes"][0]["endpoints"] == []
+    assert "graph:invalid_capability_ref" in result["missing_requirements"]
+    assert "неподтвержден" in result["message_ru"].lower()
 
 
 def test_no_capabilities_returns_needs_input_with_import_instruction():
@@ -528,6 +532,59 @@ def test_normalize_workflow_marks_invalid_capability_reference():
     assert edges == []
     assert nodes[0]["endpoints"] == []
     assert "graph:invalid_capability_ref" in issues
+
+
+def test_normalize_workflow_rejects_name_as_capability_id():
+    service = _build_service()
+    capability = _build_capability()
+    selected = [SelectedCapability(capability=capability, score=1.0)]
+
+    nodes, edges, issues = service._normalize_workflow(
+        {
+            "nodes": [
+                {
+                    "step": 1,
+                    "name": "Name instead of id",
+                    "capability_id": capability.name,
+                }
+            ],
+            "edges": [],
+        },
+        selected,
+    )
+
+    assert len(nodes) == 1
+    assert edges == []
+    assert nodes[0]["endpoints"] == []
+    assert "graph:invalid_capability_ref" in issues
+
+
+def test_normalize_workflow_marks_missing_capability_reference_for_multi_cap_set():
+    service = _build_service()
+    capability_1 = _build_capability()
+    capability_2 = _build_capability()
+    selected = [
+        SelectedCapability(capability=capability_1, score=1.0),
+        SelectedCapability(capability=capability_2, score=0.9),
+    ]
+
+    nodes, edges, issues = service._normalize_workflow(
+        {
+            "nodes": [
+                {
+                    "step": 1,
+                    "name": "Missing capability id",
+                }
+            ],
+            "edges": [],
+        },
+        selected,
+    )
+
+    assert len(nodes) == 1
+    assert edges == []
+    assert nodes[0]["endpoints"] == []
+    assert "graph:missing_capability_ref" in issues
 
 
 def test_repair_edges_with_data_flow_does_not_autolink_object_types():

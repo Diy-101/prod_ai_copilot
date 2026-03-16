@@ -55,7 +55,8 @@ const Actions: React.FC = () => {
     searchTerm,
     setSearchTerm,
     filteredActions,
-    addActions
+    addActions,
+    addCapabilities
   } = useActionsContext();
 
   const groupedActions = React.useMemo(() => {
@@ -228,9 +229,13 @@ const Actions: React.FC = () => {
           if (data && (data.succeeded_actions || data.actions)) {
             const successList = data.succeeded_actions || data.actions || [];
             const failedList = data.failed_actions || [];
+            const capabilitiesList = data.capabilities || [];
             
-            // Update main table with successful actions
+            // Update main table with successful actions and capabilities
             addActions(successList);
+            if (capabilitiesList.length > 0) {
+              addCapabilities(capabilitiesList);
+            }
             
             // Prepare and open results modal
             setImportResults({
