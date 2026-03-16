@@ -65,6 +65,7 @@ export const SynthesisChat: React.FC<SynthesisChatProps> = ({
   const [isTyping, setIsTyping] = useState(false);
   const [isHydrating, setIsHydrating] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const initialMessageProcessed = useRef(false);
   const storageKey = useMemo(() => buildDialogStorageKey(user?.id), [user?.id]);
 
   useEffect(() => {
@@ -78,17 +79,40 @@ export const SynthesisChat: React.FC<SynthesisChatProps> = ({
 
     const hydrateDialog = async () => {
       setIsHydrating(true);
+      let activeDialogId: string | null = null;
+      let shouldLoadHistory = false;
+      const storedDialogId = localStorage.getItem(storageKey);
+      let dialogs: Array<{ dialog_id: string }> = [];
+      let dialogsLoaded = false;
 
-      let activeDialogId = initialDialogId || localStorage.getItem(storageKey) || null;
-      if (!activeDialogId) {
-        try {
-          const dialogs = await listPipelineDialogs(1, 0);
-          activeDialogId = dialogs[0]?.dialog_id || null;
-        } catch (error) {
-          console.error('Unable to load dialogs list:', error);
-        }
+      try {
+        dialogs = await listPipelineDialogs(50, 0);
+        dialogsLoaded = true;
+      } catch (error) {
+        console.error('Unable to load dialogs list:', error);
       }
-      if (!activeDialogId) {
+
+      if (initialDialogId) {
+        activeDialogId = initialDialogId;
+        // New dialog from Home has no persisted history yet, so skip history prefetch.
+        if (initialMessage) {
+          shouldLoadHistory = false;
+        } else if (dialogsLoaded) {
+          shouldLoadHistory = dialogs.some((dialog) => dialog.dialog_id === initialDialogId);
+        } else {
+          // Fallback when list loading failed: try history for existing dialogs.
+          shouldLoadHistory = true;
+        }
+      } else if (
+        storedDialogId &&
+        dialogs.some((dialog) => dialog.dialog_id === storedDialogId)
+      ) {
+        activeDialogId = storedDialogId;
+        shouldLoadHistory = true;
+      } else if (dialogs.length > 0) {
+        activeDialogId = dialogs[0].dialog_id;
+        shouldLoadHistory = true;
+      } else {
         activeDialogId = generateUUID();
       }
 
@@ -98,6 +122,13 @@ export const SynthesisChat: React.FC<SynthesisChatProps> = ({
 
       setDialogId(activeDialogId);
       localStorage.setItem(storageKey, activeDialogId);
+
+      if (!shouldLoadHistory) {
+        setMessages([{ role: 'assistant', content: DEFAULT_ASSISTANT_MESSAGE }]);
+        setPipeline(null);
+        setIsHydrating(false);
+        return;
+      }
 
       try {
         const history = await getPipelineDialogHistory(activeDialogId, 30, 0);
@@ -137,6 +168,9 @@ export const SynthesisChat: React.FC<SynthesisChatProps> = ({
         }
       } catch (error) {
         if (!cancelled) {
+          const freshDialogId = generateUUID();
+          setDialogId(freshDialogId);
+          localStorage.setItem(storageKey, freshDialogId);
           setMessages([{ role: 'assistant', content: DEFAULT_ASSISTANT_MESSAGE }]);
           setPipeline(null);
         }
@@ -152,7 +186,7 @@ export const SynthesisChat: React.FC<SynthesisChatProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [initialDialogId, setPipeline, storageKey]);
+  }, [initialDialogId, initialMessage, setPipeline, storageKey]);
 
   const handleSend = useCallback(
     async (overrideValue?: string) => {
@@ -245,10 +279,11 @@ export const SynthesisChat: React.FC<SynthesisChatProps> = ({
   );
 
   useEffect(() => {
-    if (!initialMessage || isHydrating) {
+    if (!initialMessage || isHydrating || initialMessageProcessed.current) {
       return;
     }
     if (messages.length === 1 && messages[0]?.role === 'assistant') {
+      initialMessageProcessed.current = true;
       handleSend(initialMessage);
     }
   }, [handleSend, initialMessage, isHydrating, messages]);
