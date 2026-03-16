@@ -784,30 +784,30 @@ export const Pipelines: React.FC = () => {
       </div>
 
       {/* Right Sidebar - AI Chat */}
-      <AnimatePresence mode="wait">
-        {isChatVisible ? (
-          <motion.div
-            key="chat"
-            initial={{ width: 0, opacity: 0 }}
-            animate={{ width: 320, opacity: 1 }}
-            exit={{ width: 0, opacity: 0 }}
-            transition={{ type: "spring", damping: 20, stiffness: 100 }}
-            className="flex-shrink-0"
-          >
-            <SynthesisChat
-              key={dialogId || 'active-dialog'}
-              className="w-full h-full"
-              initialMessage={initialMessage}
-              initialDialogId={dialogId}
-              onClose={() => setIsChatVisible(false)}
-            />
-          </motion.div>
-        ) : (
+      <div 
+        className={cn(
+          "h-full flex-shrink-0 transition-all duration-500 ease-in-out border-l border-border bg-card relative",
+          isChatVisible ? "w-80 opacity-100" : "w-0 opacity-0 overflow-hidden border-none"
+        )}
+      >
+        <div className="w-80 h-full absolute right-0 top-0">
+          <SynthesisChat
+            key={dialogId || 'active-dialog'}
+            className="w-full h-full"
+            initialMessage={initialMessage}
+            initialDialogId={dialogId}
+            onClose={() => setIsChatVisible(false)}
+          />
+        </div>
+      </div>
+
+      <AnimatePresence>
+        {!isChatVisible && (
           <motion.div
             key="toggle"
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.8 }}
+            initial={{ opacity: 0, scale: 0.8, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.8, y: 20 }}
             className="fixed bottom-6 right-6 z-50"
           >
             <Button
