@@ -77,6 +77,10 @@ export const SynthesisChat: React.FC<SynthesisChatProps> = ({
   }, [messages]);
 
   useEffect(() => {
+    initialMessageProcessed.current = false;
+  }, [initialDialogId, initialMessage]);
+
+  useEffect(() => {
     let cancelled = false;
 
     const hydrateDialog = async () => {
@@ -105,12 +109,11 @@ export const SynthesisChat: React.FC<SynthesisChatProps> = ({
           // Fallback when list loading failed: try history for existing dialogs.
           shouldLoadHistory = true;
         }
-      } else if (
-        storedDialogId &&
-        dialogs.some((dialog) => dialog.dialog_id === storedDialogId)
-      ) {
-        activeDialogId = storedDialogId;
-        shouldLoadHistory = true;
+      } else if (storedDialogId) {
+        if (!dialogsLoaded || dialogs.some((dialog) => dialog.dialog_id === storedDialogId)) {
+          activeDialogId = storedDialogId;
+          shouldLoadHistory = true;
+        }
       } else if (dialogs.length > 0) {
         activeDialogId = dialogs[0].dialog_id;
         shouldLoadHistory = true;
@@ -170,9 +173,7 @@ export const SynthesisChat: React.FC<SynthesisChatProps> = ({
         }
       } catch (error) {
         if (!cancelled) {
-          const freshDialogId = generateUUID();
-          setDialogId(freshDialogId);
-          localStorage.setItem(storageKey, freshDialogId);
+          // Preserve selected dialog ID and show an empty state instead of forcing a new dialog.
           setMessages([{ role: 'assistant', content: DEFAULT_ASSISTANT_MESSAGE }]);
           setPipeline(null);
         }
