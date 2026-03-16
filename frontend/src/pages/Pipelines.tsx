@@ -8,10 +8,12 @@ import {
   Activity,
   Download,
   Play,
+  MessageSquare,
   Sparkles,
   ChevronDown,
   ChevronUp,
   Loader2,
+  X,
 } from 'lucide-react';
 import { usePipelineContext } from '@/contexts/PipelineContext';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -282,6 +284,7 @@ export const Pipelines: React.FC = () => {
   );
   const isPollingRequestInFlightRef = React.useRef(false);
   const notifiedTerminalStatusRef = React.useRef<ExecutionRunStatus | null>(null);
+  const [isChatVisible, setIsChatVisible] = React.useState(true);
 
   const initialMessage = location.state?.initialMessage;
   const dialogId = location.state?.dialogId;
@@ -776,11 +779,41 @@ export const Pipelines: React.FC = () => {
       </div>
 
       {/* Right Sidebar - AI Chat */}
-      <SynthesisChat
-        className="w-80"
-        initialMessage={initialMessage}
-        initialDialogId={dialogId}
-      />
+      <AnimatePresence mode="wait">
+        {isChatVisible ? (
+          <motion.div
+            key="chat"
+            initial={{ width: 0, opacity: 0 }}
+            animate={{ width: 320, opacity: 1 }}
+            exit={{ width: 0, opacity: 0 }}
+            transition={{ type: "spring", damping: 20, stiffness: 100 }}
+            className="flex-shrink-0"
+          >
+            <SynthesisChat
+              className="w-full h-full"
+              initialMessage={initialMessage}
+              initialDialogId={dialogId}
+              onClose={() => setIsChatVisible(false)}
+            />
+          </motion.div>
+        ) : (
+          <motion.div
+            key="toggle"
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.8 }}
+            className="fixed bottom-6 right-6 z-50"
+          >
+            <Button
+              size="icon"
+              className="h-14 w-14 rounded-full shadow-2xl bg-primary hover:bg-primary/90 text-primary-foreground group"
+              onClick={() => setIsChatVisible(true)}
+            >
+              <MessageSquare className="h-6 w-6 transition-transform group-hover:scale-110" />
+            </Button>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
