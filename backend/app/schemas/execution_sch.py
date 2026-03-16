@@ -35,8 +35,12 @@ class ExecutionStepRunResponse(BaseModel):
     name: str | None = None
     capability_id: UUID | None = None
     action_id: UUID | None = None
+    method: Literal["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"] | None = None
+    status_code: int | None = None
     status: Literal["PENDING", "RUNNING", "SUCCEEDED", "FAILED", "SKIPPED"]
     resolved_inputs: dict[str, Any] | None = None
+    accepted_payload: Any = None
+    output_payload: Any = None
     request_snapshot: dict[str, Any] | None = None
     response_snapshot: dict[str, Any] | None = None
     error: str | None = None

@@ -15,6 +15,15 @@ export type ExecutionStepStatus =
   | 'FAILED'
   | 'SKIPPED';
 
+export type ExecutionHttpMethod =
+  | 'GET'
+  | 'POST'
+  | 'PUT'
+  | 'PATCH'
+  | 'DELETE'
+  | 'HEAD'
+  | 'OPTIONS';
+
 export interface RunPipelineRequest {
   inputs?: Record<string, unknown>;
 }
@@ -30,8 +39,12 @@ export interface ExecutionStepRunResponse {
   name: string | null;
   capability_id: string | null;
   action_id: string | null;
+  method: ExecutionHttpMethod | null;
+  status_code: number | null;
   status: ExecutionStepStatus;
   resolved_inputs: Record<string, unknown> | null;
+  accepted_payload: unknown;
+  output_payload: unknown;
   request_snapshot: Record<string, unknown> | null;
   response_snapshot: Record<string, unknown> | null;
   error: string | null;

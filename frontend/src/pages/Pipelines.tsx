@@ -18,6 +18,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { PipelineData, PipelineEdge, PipelineNode } from '@/types/pipeline';
 import { cn } from '@/lib/utils';
 import {
+  ExecutionHttpMethod,
   ExecutionRunDetailResponse,
   ExecutionRunStatus,
   ExecutionStepRunResponse,
@@ -247,6 +248,26 @@ const getStepStatusMeta = (status: ExecutionStepStatus | undefined) => {
   };
 };
 
+const REQUEST_BODY_METHODS: ExecutionHttpMethod[] = ['POST', 'PUT', 'PATCH'];
+
+export const hasRequestBody = (
+  method: ExecutionHttpMethod | null | undefined
+) => Boolean(method && REQUEST_BODY_METHODS.includes(method));
+
+export const formatPayload = (payload: unknown): string => {
+  if (payload === null || payload === undefined) {
+    return 'нет данных';
+  }
+  if (typeof payload === 'string') {
+    return payload || 'нет данных';
+  }
+  try {
+    return JSON.stringify(payload, null, 2);
+  } catch {
+    return String(payload);
+  }
+};
+
 export const Pipelines: React.FC = () => {
   const location = useLocation();
   const { currentPipeline } = usePipelineContext();
@@ -456,6 +477,7 @@ export const Pipelines: React.FC = () => {
                 const isExpanded = expandedStep === node.step;
                 const stepRun = stepRunsByStep.get(node.step);
                 const stepStatusMeta = getStepStatusMeta(stepRun?.status);
+                const shouldShowAcceptedPayload = hasRequestBody(stepRun?.method);
 
                 return (
                   <motion.div
@@ -551,9 +573,43 @@ export const Pipelines: React.FC = () => {
                                       <span className="text-right">{stepRun.duration_ms} ms</span>
                                     </div>
                                   )}
+                                  {stepRun.method && (
+                                    <div className="flex justify-between">
+                                      <span className="font-semibold text-foreground">HTTP:</span>
+                                      <span className="text-right">{stepRun.method}</span>
+                                    </div>
+                                  )}
+                                  {typeof stepRun.status_code === 'number' && (
+                                    <div className="flex justify-between">
+                                      <span className="font-semibold text-foreground">HTTP code:</span>
+                                      <span className="text-right">{stepRun.status_code}</span>
+                                    </div>
+                                  )}
                                 </>
                               )}
                             </div>
+
+                            {stepRun && shouldShowAcceptedPayload && (
+                              <div className="space-y-1">
+                                <p className="text-[10px] font-semibold text-foreground uppercase tracking-wider">
+                                  Принял
+                                </p>
+                                <pre className="max-h-44 overflow-auto rounded-md border border-border bg-muted/30 p-2 text-[11px] leading-relaxed text-foreground whitespace-pre-wrap break-words">
+                                  {formatPayload(stepRun.accepted_payload)}
+                                </pre>
+                              </div>
+                            )}
+
+                            {stepRun && (
+                              <div className="space-y-1">
+                                <p className="text-[10px] font-semibold text-foreground uppercase tracking-wider">
+                                  Вернул
+                                </p>
+                                <pre className="max-h-44 overflow-auto rounded-md border border-border bg-muted/30 p-2 text-[11px] leading-relaxed text-foreground whitespace-pre-wrap break-words">
+                                  {formatPayload(stepRun.output_payload)}
+                                </pre>
+                              </div>
+                            )}
 
                             {node.external_inputs.length > 0 && (
                               <div className="pt-2">
