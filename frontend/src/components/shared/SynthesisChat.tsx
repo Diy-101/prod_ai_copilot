@@ -185,7 +185,6 @@ export const SynthesisChat: React.FC<SynthesisChatProps> = ({
         const response = await generatePipeline({
           dialog_id: activeDialogId,
           message: userMessage,
-          user_id: null,
           capability_ids: null,
         });
 
