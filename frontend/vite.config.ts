@@ -9,7 +9,7 @@ export default defineConfig({
     port: 8080,
     proxy: {
       "/api": {
-        target: "http://84.201.161.175:8000",
+        target: "https://team-29-main2-8f6819.pages.prodcontest.ru",
         changeOrigin: true,
       },
     },

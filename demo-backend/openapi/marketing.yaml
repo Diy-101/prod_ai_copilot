@@ -10,8 +10,8 @@ info:
     4) generate push notifications,
     5) create campaign draft.
 servers:
+  - url: https://team-29-main2-8f6819.pages.prodcontest.ru/demo-api
   - url: http://demo-api:8010
-  - url: http://localhost:8010
 paths:
   /marketing/segments:
     get:

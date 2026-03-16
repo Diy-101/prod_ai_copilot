@@ -570,7 +570,7 @@ async def create_campaign_draft(payload: CampaignDraftRequest) -> CampaignDraftR
     return CampaignDraftResponse(
         campaign_id=f"camp_{datetime.now().timestamp()}",
         status="DRAFT",
-        preview_url=f"http://demo.ads/preview/{payload.push_variant_id}"
+        preview_url=f"https://demo.ads/preview/{payload.push_variant_id}"
     )
 
 

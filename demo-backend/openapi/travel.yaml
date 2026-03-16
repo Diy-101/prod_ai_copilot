@@ -14,8 +14,8 @@ info:
     The workflow should be interpreted as a strict data pipeline where the output
     array of one step becomes the input field of the next step.
 servers:
+  - url: https://team-29-main2-8f6819.pages.prodcontest.ru/demo-api
   - url: http://demo-api:8010
-  - url: http://localhost:8010
   - url: https://api.travel.example.com
 paths:
   /users/recent:

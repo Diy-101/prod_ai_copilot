@@ -651,5 +651,5 @@ components:
       - type
       title: ValidationError
 servers:
+- url: https://team-29-main2-8f6819.pages.prodcontest.ru/demo-api
 - url: http://demo-api:8010
-- url: http://localhost:8010
