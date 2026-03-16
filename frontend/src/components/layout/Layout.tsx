@@ -37,16 +37,19 @@ export const Layout: React.FC = () => {
    * Used for mobile responsive design
    */
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(() => {
+    const saved = localStorage.getItem('history_drawer_open');
+    return saved === 'true';
+  });
 
-  /**
-   * Toggles the sidebar open/closed state
-   */
   const toggleSidebar = () => setSidebarOpen(!sidebarOpen);
   
-  /**
-   * Closes the sidebar
-   */
+  const toggleHistory = () => {
+    const newState = !historyOpen;
+    setHistoryOpen(newState);
+    localStorage.setItem('history_drawer_open', String(newState));
+  };
+
   const closeSidebar = () => setSidebarOpen(false);
 
   return (
@@ -61,7 +64,7 @@ export const Layout: React.FC = () => {
           isOpen={sidebarOpen} 
           onClose={closeSidebar} 
           isHistoryOpen={historyOpen}
-          onToggleHistory={() => setHistoryOpen(!historyOpen)}
+          onToggleHistory={toggleHistory}
         />
         
         {/* Main content area with routing */}

@@ -19,34 +19,27 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 
+import { useQuery } from '@tanstack/react-query';
+
 interface HistoryDrawerProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
 export const HistoryDrawer: React.FC<HistoryDrawerProps> = ({ isOpen, onClose }) => {
-  const [dialogs, setDialogs] = useState<PipelineDialogListItem[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const navigate = useNavigate();
 
-  useEffect(() => {
-    if (isOpen) {
-      fetchDialogs();
-    }
-  }, [isOpen]);
-
-  const fetchDialogs = async () => {
-    try {
-      setIsLoading(true);
-      const data = await listPipelineDialogs(50, 0);
-      setDialogs(data);
-    } catch (error) {
-      console.error('Failed to fetch dialogs:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const { 
+    data: dialogs = [], 
+    isLoading,
+    refetch
+  } = useQuery({
+    queryKey: ['pipelineDialogs'],
+    queryFn: () => listPipelineDialogs(50, 0),
+    enabled: isOpen,
+    refetchInterval: 5000, // Refresh every 5 seconds for real-time feel
+  });
 
   const filteredDialogs = dialogs.filter(dialog =>
     dialog.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||

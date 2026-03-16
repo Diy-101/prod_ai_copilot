@@ -13,6 +13,7 @@ import {
 } from '@/api/chat';
 import { usePipelineContext } from '@/contexts/PipelineContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { useQueryClient } from '@tanstack/react-query';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -56,6 +57,7 @@ export const SynthesisChat: React.FC<SynthesisChatProps> = ({
 }) => {
   const { setPipeline } = usePipelineContext();
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const [messages, setMessages] = useState<Message[]>([
     {
       role: 'assistant',
@@ -240,6 +242,9 @@ export const SynthesisChat: React.FC<SynthesisChatProps> = ({
           };
           return newMessages;
         });
+
+        // Invalidate history list to show new dialog
+        queryClient.invalidateQueries({ queryKey: ["pipelineDialogs"] });
 
         if (isPipelineReady(response)) {
           setPipeline({
