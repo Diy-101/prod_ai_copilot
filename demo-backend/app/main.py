@@ -56,7 +56,7 @@ class AssignmentsResponse(BaseModel):
 
 
 class EmailOfferRequest(BaseModel):
-    template_id: str
+    template_id: str = "offer_template_2026"
     assignments: list[Assignment] = Field(default_factory=list)
 
 
@@ -277,6 +277,7 @@ async def assign_users_to_hotels(payload: AssignmentsRequest) -> AssignmentsResp
     status_code=200,
     operation_id="sendHotelOffersByEmail",
     tags=["travel-offer-workflow"],
+    
 )
 async def send_hotel_offers_by_email(payload: EmailOfferRequest) -> EmailOfferResponse:
     _ = payload.template_id

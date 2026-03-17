@@ -228,6 +228,39 @@ def test_resolve_node_inputs_normalizes_array_suffix_edge_types():
     assert missing == []
 
 
+def test_resolve_node_inputs_maps_user_hotel_pairs_to_segments():
+    service = ExecutionService(session=None)  # type: ignore[arg-type]
+    segment_payload = [
+        {"segment_id": "seg_1", "hotel_id": "hotel_001", "user_ids": ["usr_001"]},
+    ]
+    resolved, missing = service._resolve_node_inputs(
+        node={"step": 4, "external_inputs": []},
+        incoming_edges=[{"from_step": 3, "to_step": 4, "type": "user_hotel_pairs"}],
+        step_outputs={"3": {"segments": segment_payload}},
+        edge_values={},
+        run_inputs={},
+    )
+
+    assert resolved["user_hotel_pairs"] == segment_payload
+    assert resolved["segments"] == segment_payload
+    assert missing == []
+
+
+def test_resolve_node_inputs_maps_empty_user_hotel_pairs_to_assignments():
+    service = ExecutionService(session=None)  # type: ignore[arg-type]
+    resolved, missing = service._resolve_node_inputs(
+        node={"step": 5, "external_inputs": []},
+        incoming_edges=[{"from_step": 4, "to_step": 5, "type": "user_hotel_pairs"}],
+        step_outputs={"4": {"assignments": []}},
+        edge_values={"4:5:user_hotel_pairs": []},
+        run_inputs={},
+    )
+
+    assert resolved["user_hotel_pairs"] == []
+    assert resolved["assignments"] == []
+    assert missing == []
+
+
 @pytest.mark.asyncio
 async def test_execute_run_linear_pipeline_succeeds_and_persists_context():
     run_id = uuid4()

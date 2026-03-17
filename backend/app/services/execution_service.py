@@ -808,6 +808,7 @@ class ExecutionService:
                 normalized = key[:-2]
                 if normalized and normalized not in resolved:
                     resolved[normalized] = value
+            self._add_inferred_input_aliases(resolved=resolved, key=key, value=value)
 
         for edge in incoming_edges:
             src = edge.get("from_step")
@@ -835,6 +836,59 @@ class ExecutionService:
         # Required fields are validated against action schema in _build_request_payload.
         missing_external: list[str] = []
         return resolved, missing_external
+
+    def _add_inferred_input_aliases(
+        self,
+        *,
+        resolved: dict[str, Any],
+        key: str,
+        value: Any,
+    ) -> None:
+        aliases: set[str] = set()
+        key_base = key[:-2] if key.endswith("[]") else key
+        normalized_key = self._normalize_lookup_token(key_base)
+
+        # Some generated graphs use synthetic edge types like "user_hotel_pairs"
+        # for both segment and assignment transitions. Mirror these aliases so
+        # downstream request schemas (segments/assignments) are satisfied.
+        if normalized_key in {
+            "userhotelpairs",
+            "hoteluserpairs",
+            "userhotelpair",
+            "hoteluserpair",
+            "pairs",
+        }:
+            aliases.update({"segments", "assignments"})
+
+        inferred_alias = self._infer_collection_alias(value)
+        if inferred_alias:
+            aliases.add(inferred_alias)
+
+        for alias in aliases:
+            if alias not in resolved:
+                resolved[alias] = value
+
+    def _infer_collection_alias(self, value: Any) -> str | None:
+        if not isinstance(value, list):
+            return None
+        sample = next((item for item in value if isinstance(item, dict)), None)
+        if not isinstance(sample, dict):
+            return None
+
+        keys = {
+            self._normalize_lookup_token(str(key))
+            for key in sample.keys()
+            if isinstance(key, str)
+        }
+        if {"segmentid", "hotelid", "userids"}.issubset(keys):
+            return "segments"
+        if {"userid", "hotelid"}.issubset(keys):
+            return "assignments"
+        if {"id", "email", "lastactive"}.issubset(keys):
+            return "users"
+        if {"id", "name", "city"}.issubset(keys):
+            return "hotels"
+        return None
 
     def _build_request_payload(self, *, action: Action, resolved_inputs: dict[str, Any]) -> dict[str, Any]:
         params_schema = action.parameters_schema if isinstance(action.parameters_schema, dict) else {}
