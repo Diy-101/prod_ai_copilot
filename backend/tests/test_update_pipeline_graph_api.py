@@ -182,8 +182,9 @@ async def test_patch_graph_rejects_cycle():
     )
 
     assert response.status_code == 422
-    detail = response.json()["detail"]
-    assert "graph: cycle" in detail["errors"]
+    payload = response.json()
+    assert payload["code"] == "VALIDATION_FAILED"
+    assert "graph: cycle" in payload["details"]["errors"]
 
 
 @pytest.mark.asyncio
@@ -210,8 +211,9 @@ async def test_patch_graph_rejects_edge_to_missing_node():
     )
 
     assert response.status_code == 422
-    detail = response.json()["detail"]
-    assert "graph: edge_to_missing_node:1->999" in detail["errors"]
+    payload = response.json()
+    assert payload["code"] == "VALIDATION_FAILED"
+    assert "graph: edge_to_missing_node:1->999" in payload["details"]["errors"]
 
 
 @pytest.mark.asyncio
@@ -241,5 +243,6 @@ async def test_patch_graph_rejects_duplicate_edge_triplets():
     )
 
     assert response.status_code == 422
-    detail = response.json()["detail"]
-    assert "graph: duplicate_edge:1->2:users" in detail["errors"]
+    payload = response.json()
+    assert payload["code"] == "VALIDATION_FAILED"
+    assert "graph: duplicate_edge:1->2:users" in payload["details"]["errors"]
