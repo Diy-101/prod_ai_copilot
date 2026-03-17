@@ -1,7 +1,7 @@
 export interface PipelineNode {
   step: number;
   name: string;
-  description: string;
+  description: string | null;
   input_connected_from: number[];
   output_connected_to: number[];
   input_data_type_from_previous: Array<{ from_step: number; type: string }>;
@@ -9,7 +9,8 @@ export interface PipelineNode {
   endpoints: Array<{
     name: string;
     capability_id: string;
-    action_id: string;
+    action_id: string | null;
+    type?: string | null;
     input_type: Record<string, string> | string | null;
     output_type: string | Record<string, string> | null;
   }>;
