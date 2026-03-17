@@ -6,6 +6,10 @@ import os
 from datetime import datetime, timezone
 from typing import Any
 
+from app.utils.log_context import get_log_context
+
+SERVICE_NAME = os.getenv("APP_SERVICE_NAME", "backend-api")
+
 
 LOG_RECORD_RESERVED_FIELDS = set(
     logging.LogRecord(
@@ -40,6 +44,7 @@ class JsonFormatter(logging.Formatter):
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),
+            "service_name": SERVICE_NAME,
         }
 
         for key in (
@@ -75,6 +80,14 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(payload, ensure_ascii=True)
 
 
+class RequestContextFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        for key, value in get_log_context().items():
+            if getattr(record, key, None) is None:
+                setattr(record, key, value)
+        return True
+
+
 def configure_logging() -> None:
     level = os.getenv("LOG_LEVEL", "INFO").upper()
     root_logger = logging.getLogger()
@@ -83,4 +96,5 @@ def configure_logging() -> None:
 
     handler = logging.StreamHandler()
     handler.setFormatter(JsonFormatter())
+    handler.addFilter(RequestContextFilter())
     root_logger.addHandler(handler)

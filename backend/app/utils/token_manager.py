@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database.session import get_session
 from app.models import User, UserRole
+from app.utils.log_context import set_user_context
 
 try:
     from jose import JWTError, jwt
@@ -82,6 +83,7 @@ async def get_current_user(
             detail="User account is deactivated",
         )
 
+    set_user_context(user_id=str(user.id))
     return user
 
 

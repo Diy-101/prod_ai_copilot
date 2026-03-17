@@ -20,6 +20,7 @@ from app.utils.error_handlers import (
     http_exception_handler,
     unhandled_exception_handler,
 )
+from app.utils.log_context import clear_log_context, set_request_context
 from app.core.logging import configure_logging
 from app.core.database.init import init_db
 
@@ -99,38 +100,46 @@ app = FastAPI(lifespan=lifespan, redirect_slashes=False)
 async def add_trace_id(request, call_next):
     trace_id = request.headers.get("X-Trace-Id") or str(uuid.uuid4())
     request.state.traceId = trace_id
+    set_request_context(
+        trace_id=trace_id,
+        path=request.url.path,
+        method=request.method,
+    )
 
     started_at = perf_counter()
     try:
-        response = await call_next(request)
-    except Exception:
+        try:
+            response = await call_next(request)
+        except Exception:
+            duration_ms = int((perf_counter() - started_at) * 1000)
+            http_logger.exception(
+                "http_request_failed",
+                extra={
+                    "event": "http_request_failed",
+                    "trace_id": trace_id,
+                    "method": request.method,
+                    "path": request.url.path,
+                    "duration_ms": duration_ms,
+                },
+            )
+            raise
+
         duration_ms = int((perf_counter() - started_at) * 1000)
-        http_logger.exception(
-            "http_request_failed",
+        http_logger.info(
+            "http_request",
             extra={
-                "event": "http_request_failed",
+                "event": "http_request",
                 "trace_id": trace_id,
                 "method": request.method,
                 "path": request.url.path,
+                "status_code": response.status_code,
                 "duration_ms": duration_ms,
             },
         )
-        raise
-
-    duration_ms = int((perf_counter() - started_at) * 1000)
-    http_logger.info(
-        "http_request",
-        extra={
-            "event": "http_request",
-            "trace_id": trace_id,
-            "method": request.method,
-            "path": request.url.path,
-            "status_code": response.status_code,
-            "duration_ms": duration_ms,
-        },
-    )
-    response.headers["X-Trace-Id"] = trace_id
-    return response
+        response.headers["X-Trace-Id"] = trace_id
+        return response
+    finally:
+        clear_log_context()
 
 
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
