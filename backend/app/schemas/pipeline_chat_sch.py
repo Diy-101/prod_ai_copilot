@@ -55,6 +55,18 @@ class PipelineGenerateResponse(BaseModel):
     context_summary: str | None = None
 
 
+class PipelineGraphUpdateRequest(BaseModel):
+    nodes: list[PipelineGraphNode] = Field(default_factory=list)
+    edges: list[PipelineGraphEdge] = Field(default_factory=list)
+
+
+class PipelineGraphUpdateResponse(BaseModel):
+    pipeline_id: UUID
+    nodes: list[PipelineGraphNode] = Field(default_factory=list)
+    edges: list[PipelineGraphEdge] = Field(default_factory=list)
+    updated_at: datetime
+
+
 class DialogResetRequest(BaseModel):
     dialog_id: UUID
 
