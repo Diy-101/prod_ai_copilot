@@ -1,9 +1,0 @@
-__pycache__/
-*.py[cod]
-*.log
-.pytest_cache/
-.mypy_cache/
-.venv/
-venv/
-openapi/
-README.md
